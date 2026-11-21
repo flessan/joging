@@ -1,0 +1,25 @@
+{
+  "name": "joging",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "engines": {
+    "node": ">=20.19.0"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "idb-keyval": "^6.2.2",
+    "maplibre-gl": "^6.19.0",
+    "pmtiles": "^4.5.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3",
+    "vite": "^7.1.11",
+    "vite-plugin-pwa": "^2.0.0"
+  }
+}
