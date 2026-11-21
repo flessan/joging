@@ -9,7 +9,7 @@ Private-first route tracker for the web and installable PWA. The app is designed
 - PMTiles for single-file offline map archives.
 - IndexedDB for locally storing the selected map archive.
 - Vite PWA / Workbox for caching the application shell.
-- Manual map selection: click the map to place a pin, then drag the pin to adjust it.
+- Manual map selection: click the map to place a pin, then drag the pin to adjust it. just that ^^
 
 ## Project structure
 
