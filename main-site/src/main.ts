@@ -98,6 +98,7 @@ mapHandle = createTripMap(
 
     if (phase === "active" && currentTrip) {
       selectedPoint = null;
+      mapHandle?.setSelected(null);
       addPoint({
         ...coordinate,
         at: Date.now(),
@@ -334,7 +335,7 @@ function appendGpsTrailPoint(position: GeolocationPosition, persistImmediately =
   mapHandle?.setCurrentLocation(coordinate);
 
   // Avoid drawing noisy segments when the browser reports a weak GPS fix.
-  if (Number.isFinite(accuracy) && accuracy > 75) {
+  if (Number.isFinite(accuracy) && accuracy > 100) {
     el.mapState.textContent = "Menunggu sinyal GPS lebih akurat";
     return false;
   }
@@ -424,7 +425,7 @@ async function refreshCurrentLocation(): Promise<void> {
     if (accepted) {
       await persist();
       notify("Lokasi terbaru ditambahkan ke jejak perjalanan.");
-    } else if (position.coords.accuracy > 75) {
+    } else if (position.coords.accuracy > 100) {
       notify("Lokasi ditemukan, tetapi akurasinya terlalu rendah untuk ditambahkan ke jejak.", true);
     } else {
       notify("Posisi diperbarui, tetapi tidak ditambahkan karena terlalu dekat atau lonjakan GPS tidak wajar.");
