@@ -17,6 +17,7 @@ export interface TripMapHandle {
   setRoute: (points: RoutePoint[]) => void;
   setSelected: (coordinate: Coordinate | null) => void;
   setCurrentLocation: (coordinate: Coordinate | null) => void;
+  setFollow: (enabled: boolean) => void;
   flyTo: (coordinate: Coordinate, zoom?: number) => void;
   destroy: () => void;
 }
@@ -48,7 +49,8 @@ export function createTripMap(
   container: HTMLElement,
   onManualPoint: (coordinate: Coordinate) => void,
   onReady: () => void,
-  onError: (message: string) => void
+  onError: (message: string) => void,
+  onFollowChange: (enabled: boolean) => void
 ): TripMapHandle {
   const style: maplibregl.StyleSpecification = {
     version: 8,
@@ -90,6 +92,7 @@ export function createTripMap(
   let currentLocationMarker: maplibregl.Marker | undefined;
   let restMarkers: maplibregl.Marker[] = [];
   let latestRoute: RoutePoint[] = [];
+  let followLocation = true;
 
   const routeData = (points: RoutePoint[]): GeoJSON.FeatureCollection<GeoJSON.Geometry> => {
     const features: GeoJSON.Feature<GeoJSON.Geometry>[] = [];
@@ -143,6 +146,20 @@ export function createTripMap(
 
   map.on("load", () => {
     map.addSource("journey-route", { type: "geojson", data: routeData(latestRoute) });
+    // A bright casing keeps the route readable on both light and dark map tiles.
+    map.addLayer({
+      id: "journey-line-casing",
+      type: "line",
+      source: "journey-route",
+      filter: ["==", ["geometry-type"], "LineString"],
+      layout: { "line-cap": "round", "line-join": "round" },
+      paint: {
+        "line-color": "#ffffff",
+        "line-width": ["interpolate", ["linear"], ["zoom"], 4, 8, 16, 13],
+        "line-opacity": 0.98,
+        "line-blur": 0.35
+      }
+    });
     map.addLayer({
       id: "journey-line",
       type: "line",
@@ -150,9 +167,20 @@ export function createTripMap(
       filter: ["==", ["geometry-type"], "LineString"],
       layout: { "line-cap": "round", "line-join": "round" },
       paint: {
-        "line-color": "#287a96",
-        "line-width": ["interpolate", ["linear"], ["zoom"], 4, 2.5, 16, 5],
-        "line-opacity": 0.92
+        "line-color": "#087fa6",
+        "line-width": ["interpolate", ["linear"], ["zoom"], 4, 4, 16, 7],
+        "line-opacity": 1
+      }
+    });
+    map.addLayer({
+      id: "journey-points-halo",
+      type: "circle",
+      source: "journey-route",
+      filter: ["==", ["geometry-type"], "Point"],
+      paint: {
+        "circle-radius": ["interpolate", ["linear"], ["zoom"], 4, 5, 16, 8],
+        "circle-color": "#ffffff",
+        "circle-opacity": 0.98
       }
     });
     map.addLayer({
@@ -161,10 +189,10 @@ export function createTripMap(
       source: "journey-route",
       filter: ["==", ["geometry-type"], "Point"],
       paint: {
-        "circle-radius": ["interpolate", ["linear"], ["zoom"], 4, 3.2, 16, 5],
-        "circle-color": "#ffffff",
-        "circle-stroke-color": "#287a96",
-        "circle-stroke-width": 2.5
+        "circle-radius": ["interpolate", ["linear"], ["zoom"], 4, 2.8, 16, 5],
+        "circle-color": "#087fa6",
+        "circle-stroke-color": "#ffffff",
+        "circle-stroke-width": 1
       }
     });
     refreshRestMarkers();
@@ -187,9 +215,19 @@ export function createTripMap(
     }
   };
 
+  map.on("dragstart", () => {
+    if (!followLocation) return;
+    followLocation = false;
+    onFollowChange(false);
+  });
+
   map.on("click", (event) => {
     const coordinate = { latitude: event.lngLat.lat, longitude: event.lngLat.lng };
     moveSelectedMarker(coordinate);
+    if (followLocation) {
+      followLocation = false;
+      onFollowChange(false);
+    }
     onManualPoint(coordinate);
   });
 
@@ -227,6 +265,14 @@ export function createTripMap(
       } else {
         currentLocationMarker.setLngLat(lngLat);
       }
+
+      if (followLocation && map.loaded()) {
+        map.easeTo({ center: lngLat, duration: 450, essential: true });
+      }
+    },
+    setFollow: (enabled) => {
+      followLocation = enabled;
+      onFollowChange(enabled);
     },
     flyTo: (coordinate, zoom = 16) => {
       map.flyTo({
