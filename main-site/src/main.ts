@@ -19,6 +19,10 @@ const $ = <T extends HTMLElement>(selector: string): T => {
 const el = {
   map: $("#map"),
   mapState: $("#map-state-label"),
+  sessionTitle: $("#session-title"),
+  followToggle: $("#follow-toggle"),
+  drawerLevelLabel: $("#drawer-level-label"),
+  detailsDrawer: $("#details-drawer"),
   mapHint: $("#map-hint"),
   selectedLabel: $("#selected-label"),
   selectedCoordinate: $("#selected-coordinate"),
@@ -113,6 +117,10 @@ mapHandle = createTripMap(
   (message) => {
     el.mapState.textContent = "Peta tidak lengkap";
     console.warn("Joging map:", message);
+  },
+  (enabled) => {
+    el.followToggle.setAttribute("aria-pressed", String(enabled));
+    el.followToggle.classList.toggle("is-enabled", enabled);
   }
 );
 
@@ -206,11 +214,14 @@ function setPhase(nextPhase: Phase): void {
   el.status.className = `session-status is-${nextPhase}`;
 
   if (nextPhase === "idle") {
-    el.help.textContent = "Tekan Mulai untuk mengambil posisi awal dan mengaktifkan jejak GPS. Kamu juga bisa memakai Perbarui lokasi atau memilih titik manual di peta.";
+    el.sessionTitle.textContent = "Siap berangkat?";
+    el.help.textContent = "Mulai untuk merekam jejak GPS. Ketuk peta untuk menambah titik manual.";
   } else if (nextPhase === "active") {
-    el.help.textContent = "Jejak GPS sedang direkam saat halaman terbuka. Tekan Istirahat untuk menyimpan pin tidur dan menjeda timer, atau Selesai untuk mengakhiri.";
+    el.sessionTitle.textContent = "Perjalanan berlangsung";
+    el.help.textContent = "Jejak GPS aktif. Garis rute mengikuti posisi selama halaman terbuka.";
   } else {
-    el.help.textContent = "Timer aktif dijeda. Tekan Lanjutkan saat siap bergerak lagi.";
+    el.sessionTitle.textContent = "Sedang istirahat";
+    el.help.textContent = "Jejak GPS dijeda. Pin tidur sudah ditambahkan di lokasi istirahat.";
   }
 
   updateLiveStats();
@@ -400,6 +411,7 @@ async function refreshCurrentLocation(): Promise<void> {
     longitude: position.coords.longitude
   };
 
+  mapHandle?.setFollow(true);
   mapHandle?.setCurrentLocation(coordinate);
   mapHandle?.flyTo(coordinate);
   el.selectedLabel.textContent = "Lokasi saat ini";
@@ -439,6 +451,7 @@ async function startJourney(): Promise<void> {
   await persist();
   mapHandle?.setRoute(currentTrip.points);
   setPhase("active");
+  mapHandle?.setFollow(true);
   startLocationTrail();
   notify(point.source === "gps" ? "Perjalanan dimulai. Jejak GPS aktif selama perjalanan berjalan." : "Perjalanan dimulai dari titik manual. Jejak GPS aktif.");
 }
@@ -465,6 +478,7 @@ async function resumeJourney(): Promise<void> {
   delete currentTrip.pausedAt;
   await persist();
   setPhase("active");
+  mapHandle?.setFollow(true);
   startLocationTrail();
   notify("Perjalanan dilanjutkan. Jejak GPS aktif kembali.");
 }
@@ -626,7 +640,8 @@ function showResult(trip: SavedTrip, unlocked: typeof BADGES[number][]): void {
   }
 
   el.result.hidden = false;
-  el.result.scrollIntoView({ behavior: "smooth", block: "start" });
+  el.detailsDrawer.open = true;
+  el.detailsDrawer.scrollIntoView({ behavior: "smooth", block: "nearest" });
 }
 
 function renderProgress(): void {
@@ -636,6 +651,7 @@ function renderProgress(): void {
   const title = names[Math.min(level - 1, names.length - 1)] ?? "Legenda";
   el.levelNumber.textContent = String(level);
   el.levelName.textContent = `Level ${level} · ${title}`;
+  el.drawerLevelLabel.textContent = `Level ${level} · ${title}`;
   el.xpLabel.textContent = `${currentLevelXp} / 100 XP`;
   (el.xpProgress as HTMLElement).style.width = `${currentLevelXp}%`;
   el.xpNext.textContent = `${100 - currentLevelXp} XP menuju level berikutnya`;
@@ -723,6 +739,10 @@ el.resume.addEventListener("click", () => void runAction(resumeJourney));
 el.finish.addEventListener("click", () => void runAction(finishJourney));
 el.finishPaused.addEventListener("click", () => void runAction(finishJourney));
 el.refreshLocation.addEventListener("click", () => void runAction(refreshCurrentLocation));
+el.followToggle.addEventListener("click", () => {
+  const enabled = el.followToggle.getAttribute("aria-pressed") !== "true";
+  mapHandle?.setFollow(enabled);
+});
 el.clearSelection.addEventListener("click", () => {
   selectedPoint = null;
   mapHandle?.setSelected(null);
