@@ -14,37 +14,21 @@ import {
   type SelectedCoordinate
 } from "./map/offline-map";
 
-const importButton = document.querySelector<HTMLButtonElement>("#import-map-button");
-const emptyImportButton = document.querySelector<HTMLButtonElement>("#empty-import-button");
-const fileInput = document.querySelector<HTMLInputElement>("#map-file-input");
-const removeButton = document.querySelector<HTMLButtonElement>("#remove-map-button");
-const mapContainer = document.querySelector<HTMLDivElement>("#map");
-const mapEmpty = document.querySelector<HTMLDivElement>("#map-empty");
-const mapLoading = document.querySelector<HTMLDivElement>("#map-loading");
-const mapName = document.querySelector<HTMLElement>("#map-file-name");
-const mapMeta = document.querySelector<HTMLElement>("#map-file-meta");
-const mapFeedback = document.querySelector<HTMLDivElement>("#map-feedback");
-const coordinateValue = document.querySelector<HTMLElement>("#coordinate-value");
-const updateBanner = document.querySelector<HTMLDivElement>("#update-banner");
-const updateButton = document.querySelector<HTMLButtonElement>("#update-button");
+const importButton = document.querySelector<HTMLButtonElement>("#import-map-button")!;
+const emptyImportButton = document.querySelector<HTMLButtonElement>("#empty-import-button")!;
+const fileInput = document.querySelector<HTMLInputElement>("#map-file-input")!;
+const removeButton = document.querySelector<HTMLButtonElement>("#remove-map-button")!;
+const mapContainer = document.querySelector<HTMLDivElement>("#map")!;
+const mapEmpty = document.querySelector<HTMLDivElement>("#map-empty")!;
+const mapLoading = document.querySelector<HTMLDivElement>("#map-loading")!;
+const mapName = document.querySelector<HTMLElement>("#map-file-name")!;
+const mapMeta = document.querySelector<HTMLElement>("#map-file-meta")!;
+const mapFeedback = document.querySelector<HTMLDivElement>("#map-feedback")!;
+const coordinateValue = document.querySelector<HTMLElement>("#coordinate-value")!;
+const updateBanner = document.querySelector<HTMLDivElement>("#update-banner")!;
+const updateButton = document.querySelector<HTMLButtonElement>("#update-button")!;
 
-if (
-  !importButton ||
-  !emptyImportButton ||
-  !fileInput ||
-  !removeButton ||
-  !mapContainer ||
-  !mapEmpty ||
-  !mapLoading ||
-  !mapName ||
-  !mapMeta ||
-  !mapFeedback ||
-  !coordinateValue ||
-  !updateBanner ||
-  !updateButton
-) {
-  throw new Error("Elemen aplikasi tidak lengkap.");
-}
+// These elements are required by the page markup. Fail fast if markup changes.
 
 let mapHandle: OfflineMapHandle | undefined;
 
