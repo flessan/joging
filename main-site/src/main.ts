@@ -146,8 +146,6 @@ async function mountTripMap(): Promise<void> {
 
     if (currentTrip?.points.length) {
       mapHandle.setRoute(currentTrip.points);
-      const lastPoint = currentTrip.points[currentTrip.points.length - 1];
-      if (lastPoint) mapHandle.flyTo(lastPoint, 15);
     }
     if (selectedPoint) mapHandle.setSelected(selectedPoint);
   } catch (error) {
