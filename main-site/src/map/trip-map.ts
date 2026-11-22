@@ -77,11 +77,11 @@ export function createTripMap(
       });
     }
 
-    if (coordinates.length > 0) {
+    for (const coordinate of coordinates) {
       features.push({
         type: "Feature",
-        properties: { kind: "checkpoints" },
-        geometry: { type: "MultiPoint", coordinates }
+        properties: { kind: "checkpoint" },
+        geometry: { type: "Point", coordinates: coordinate }
       });
     }
 
@@ -94,10 +94,7 @@ export function createTripMap(
   };
 
   map.on("load", () => {
-    map.addSource("journey-route", {
-      type: "geojson",
-      data: routeData(latestRoute)
-    });
+    map.addSource("journey-route", { type: "geojson", data: routeData(latestRoute) });
     map.addLayer({
       id: "journey-line",
       type: "line",
@@ -110,7 +107,7 @@ export function createTripMap(
       id: "journey-points",
       type: "circle",
       source: "journey-route",
-      filter: ["==", ["geometry-type"], "MultiPoint"],
+      filter: ["==", ["geometry-type"], "Point"],
       paint: {
         "circle-radius": 5,
         "circle-color": "#ffffff",
@@ -121,15 +118,11 @@ export function createTripMap(
     onReady();
   });
 
-  map.on("click", (event) => {
-    const coordinate = {
-      latitude: event.lngLat.lat,
-      longitude: event.lngLat.lng
-    };
-
+  const moveManualMarker = (coordinate: Coordinate): void => {
+    const lngLat: [number, number] = [coordinate.longitude, coordinate.latitude];
     if (!selectedMarker) {
       selectedMarker = new maplibregl.Marker({ color: "#d77950", draggable: true })
-        .setLngLat(event.lngLat)
+        .setLngLat(lngLat)
         .addTo(map);
       selectedMarker.on("dragend", () => {
         if (!selectedMarker) return;
@@ -137,9 +130,13 @@ export function createTripMap(
         onManualPoint({ latitude: point.lat, longitude: point.lng });
       });
     } else {
-      selectedMarker.setLngLat(event.lngLat);
+      selectedMarker.setLngLat(lngLat);
     }
+  };
 
+  map.on("click", (event) => {
+    const coordinate = { latitude: event.lngLat.lat, longitude: event.lngLat.lng };
+    moveManualMarker(coordinate);
     onManualPoint(coordinate);
   });
 
@@ -159,20 +156,7 @@ export function createTripMap(
         selectedMarker = undefined;
         return;
       }
-
-      const lngLat: [number, number] = [coordinate.longitude, coordinate.latitude];
-      if (!selectedMarker) {
-        selectedMarker = new maplibregl.Marker({ color: "#d77950", draggable: true })
-          .setLngLat(lngLat)
-          .addTo(map);
-        selectedMarker.on("dragend", () => {
-          if (!selectedMarker) return;
-          const point = selectedMarker.getLngLat();
-          onManualPoint({ latitude: point.lat, longitude: point.lng });
-        });
-      } else {
-        selectedMarker.setLngLat(lngLat);
-      }
+      moveManualMarker(coordinate);
     },
     flyTo: (coordinate, zoom = 16) => {
       map.flyTo({
