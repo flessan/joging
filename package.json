@@ -1,7 +1,7 @@
 {
   "name": "joging",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.2.0",
   "type": "module",
   "engines": {
     "node": ">=20.19.0"
@@ -14,8 +14,7 @@
   },
   "dependencies": {
     "idb-keyval": "^6.2.2",
-    "maplibre-gl": "^6.19.0",
-    "pmtiles": "^4.5.0"
+    "maplibre-gl": "^6.19.0"
   },
   "devDependencies": {
     "typescript": "^5.9.3",
