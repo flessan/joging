@@ -1,1 +1,128 @@
-#dalam-pengerjaan
+<!doctype html>
+<html lang="id">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#e9f1f5" />
+    <meta name="description" content="Pelacak perjalanan pribadi. Peta dan riwayat tersimpan di perangkat, tanpa pelacakan latar belakang." />
+    <title>Joging - Perjalanan tetap pribadi</title>
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <a class="brand" href="/" aria-label="Joging, halaman utama">
+          <span class="brand-mark" aria-hidden="true">
+            <svg viewBox="0 0 32 32" fill="none">
+              <path d="M5 22.5 12.3 10l4.5 7.2 3.1-4.7L27 22.5H5Z" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" />
+              <circle cx="23.2" cy="8.1" r="2.1" fill="currentColor" />
+            </svg>
+          </span>
+          <span>joging</span>
+        </a>
+        <span class="privacy-indicator">
+          <span class="privacy-dot" aria-hidden="true"></span>
+          Lokal saja
+        </span>
+      </header>
+
+      <main>
+        <section class="intro">
+          <div>
+            <p class="eyebrow">PRIVATE ROUTE TRACKER</p>
+            <h1>Perjalananmu,<br /><span>tetap milikmu.</span></h1>
+            <p class="intro-copy">
+              Tandai perjalanan tanpa akun, tanpa pelacakan diam-diam, dan tanpa mengirim koordinat ke server.
+            </p>
+          </div>
+          <div class="intro-note">
+            <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path d="M12 3 19 6v5c0 4.8-2.9 8-7 10-4.1-2-7-5.2-7-10V6l7-3Z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" />
+              <path d="m9 12 2 2 4-4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+            <span>GPS tidak berjalan otomatis</span>
+          </div>
+        </section>
+
+        <section class="map-section" aria-labelledby="map-title">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">PETA OFFLINE</p>
+              <h2 id="map-title">Pilih peta lokal</h2>
+              <p class="section-copy">Impor arsip peta sekali. Setelah tersimpan, peta dapat dibuka tanpa koneksi internet.</p>
+            </div>
+            <button class="button button-primary" id="import-map-button" type="button">
+              <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path d="M12 15V4m0 0L8 8m4-4 4 4M4.5 14.5v4A1.5 1.5 0 0 0 6 20h12a1.5 1.5 0 0 0 1.5-1.5v-4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
+              </svg>
+              Impor peta
+            </button>
+            <input id="map-file-input" type="file" accept=".pmtiles,application/octet-stream" hidden />
+          </div>
+
+          <div class="map-frame">
+            <div id="map" aria-label="Peta offline interaktif"></div>
+            <div class="map-empty" id="map-empty">
+              <div class="empty-map-icon" aria-hidden="true">
+                <svg viewBox="0 0 48 48" fill="none">
+                  <path d="m5 12 12-5 14 5 12-5v29l-12 5-14-5-12 5V12Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" />
+                  <path d="M17 7v29M31 12v29" stroke="currentColor" stroke-width="1.8" />
+                  <path d="M24 17.5a5.2 5.2 0 0 0-5.2 5.2c0 4 5.2 9.3 5.2 9.3s5.2-5.3 5.2-9.3a5.2 5.2 0 0 0-5.2-5.2Z" fill="currentColor" opacity=".15" stroke="currentColor" stroke-width="1.6" />
+                  <circle cx="24" cy="22.7" r="1.7" fill="currentColor" />
+                </svg>
+              </div>
+              <strong>Belum ada peta offline</strong>
+              <p>Impor berkas <code>.pmtiles</code> dari perangkatmu untuk mulai memilih titik di peta.</p>
+              <button class="button button-secondary" id="empty-import-button" type="button">Pilih berkas peta</button>
+            </div>
+            <div class="map-loading" id="map-loading" hidden>Memuat peta lokal...</div>
+          </div>
+
+          <div class="map-footer">
+            <div class="map-file-details">
+              <span class="file-status-dot" id="file-status-dot" aria-hidden="true"></span>
+              <div>
+                <strong id="map-file-name">Belum ada peta tersimpan</strong>
+                <span id="map-file-meta">Peta akan disimpan di perangkat ini.</span>
+              </div>
+            </div>
+            <button class="button button-quiet" id="remove-map-button" type="button" disabled>Hapus peta</button>
+          </div>
+
+          <div class="map-feedback" id="map-feedback" role="status" aria-live="polite">
+            Ketuk peta untuk menaruh pin. Pin dapat digeser untuk menyesuaikan titik.
+          </div>
+          <div class="coordinate-readout" id="coordinate-readout">
+            <span>Koordinat pilihan</span>
+            <strong id="coordinate-value">Belum ada titik dipilih</strong>
+          </div>
+        </section>
+
+        <section class="privacy-section" aria-labelledby="privacy-title">
+          <div class="privacy-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none">
+              <rect x="5" y="10" width="14" height="11" rx="2" stroke="currentColor" stroke-width="1.7" />
+              <path d="M8 10V7a4 4 0 1 1 8 0v3M12 14v3" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" />
+            </svg>
+          </div>
+          <div>
+            <h2 id="privacy-title">Dirancang untuk tetap lokal</h2>
+            <p>Berkas peta disimpan di IndexedDB browser. Aplikasi tidak mengunggah berkas atau koordinat, tidak memakai analytics, dan belum meminta izin lokasi.</p>
+          </div>
+        </section>
+
+        <p class="stage-note">Fondasi awal: peta offline dan pemilihan titik manual. Pencatatan waktu, waypoint, dan riwayat perjalanan akan dibangun di tahap berikutnya.</p>
+      </main>
+
+      <div class="update-banner" id="update-banner" hidden>
+        <span>Pembaruan aplikasi tersedia.</span>
+        <button class="button button-secondary" id="update-button" type="button">Muat ulang</button>
+      </div>
+
+      <footer class="app-footer">
+        <span>Joging</span>
+        <span>Private by design</span>
+      </footer>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
