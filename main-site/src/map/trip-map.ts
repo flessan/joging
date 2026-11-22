@@ -86,7 +86,6 @@ export function createTripMap(
   });
 
   map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
-  map.addControl(new maplibregl.AttributionControl({ compact: true }), "bottom-right");
 
   let selectedMarker: maplibregl.Marker | undefined;
   let currentLocationMarker: maplibregl.Marker | undefined;
