@@ -411,9 +411,7 @@ async function finishJourney(): Promise<void> {
     notify("Lokasi akhir tidak didapat. Perjalanan diselesaikan pada checkpoint terakhir.", true);
   }
 
-  if (phase === "active") {
-    currentTrip.activeMs += Math.max(0, Date.now() - currentTrip.lastResumedAt);
-  }
+  // completeTrip reads the active timer once; do not add this interval beforehand.
   completeTrip(point);
 }
 
