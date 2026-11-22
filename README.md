@@ -1,37 +1,43 @@
 # Joging
 
-Private-first route tracker for the web and installable PWA. The app is designed to keep route data on the user's device and to work without a network connection after installation and map import.
+A plug-and-play, privacy-first journey tracker for the web and installable PWA. No account, no PMTiles download, and no background GPS tracking.
 
-## Current foundation
+## Use it
 
-- Vite + TypeScript, without a framework layer.
-- MapLibre GL JS for the map renderer.
-- PMTiles for single-file offline map archives.
-- IndexedDB for locally storing the selected map archive.
-- Vite PWA / Workbox for caching the application shell.
-- Manual map selection: click the map to place a pin, then drag the pin to adjust it. just that ^^
+1. Open Joging over HTTPS.
+2. Press **Mulai perjalanan** and allow a one-shot location request, or tap the map to choose a manual checkpoint.
+3. Press **Istirahat** to save a rest point and pause the active timer.
+4. Press **Lanjutkan** when you are ready to move again.
+5. Press **Selesai** to save the journey summary.
 
-## Project structure
+The map appears automatically. It uses the standard OpenStreetMap raster tile service and therefore needs an internet connection. No map archive or API key needs to be prepared.
 
-```text
-.
-├── main-site/
-│   ├── index.html
-│   ├── public/
-│   │   └── icons/
-│   │       └── app-icon.svg
-│   └── src/
-│       ├── map/
-│       │   └── offline-map.ts
-│       ├── storage/
-│       │   └── map-store.ts
-│       ├── main.ts
-│       ├── styles.css
-│       └── vite-env.d.ts
-├── package.json
-├── tsconfig.json
-└── vite.config.ts
-```
+## Journey statistics
+
+After finishing a trip, Joging shows:
+
+- Estimated checkpoint-to-checkpoint distance.
+- Total elapsed time, active time, and rest time.
+- Average speed and average pace.
+- Checkpoint count and XP earned.
+- Local history, level progress, daily streak, and achievement badges.
+
+**Distance limitation:** GPS is sampled only after an explicit button press with `getCurrentPosition()`. Joging does not use continuous `watchPosition()` tracking. Distance is calculated with the Haversine formula between saved checkpoints as straight-line segments. It is an estimate and can be shorter than the actual streets or footpaths travelled. For better estimates, save occasional rest/resume checkpoints or add manual points on the map.
+
+## Gamification
+
+Trips award XP based on distance and active time. Milestone badges add bonus XP. Levels, badges, streaks, and trip history are stored locally in the browser. Use the export button to download a JSON backup of completed trips and progress.
+
+## Privacy boundaries
+
+- No account, analytics, tracking SDK, application backend, or upload endpoint.
+- Trip checkpoints, timestamps, statistics, XP, and history remain in browser IndexedDB.
+- Location is requested only after a user action. The app never starts a background GPS watcher.
+- When GPS is unavailable, a user-selected map point can be used as a manual checkpoint.
+- The OpenStreetMap tile server receives normal map tile requests. Like any external map provider, it can receive the browser's IP address and the tile coordinates for the map area being viewed. Joging does not send its saved trip history or checkpoint list to that service.
+- The app shell is precached as a PWA. The basemap itself is not promised to work offline; the public OpenStreetMap tile service does not permit bulk tile downloads or offline prefetching. Follow the [OpenStreetMap tile usage policy](https://operations.osmfoundation.org/policies/tiles/).
+
+Clearing browser site data can remove local trip history and gamification progress. Export a backup before clearing site data or changing browsers.
 
 ## Development
 
@@ -51,23 +57,9 @@ pnpm preview
 
 The production output is written to `dist/`.
 
-## Offline map format
+## Stack
 
-Joging does not request tiles from a public tile server. Import a local `.pmtiles` archive using **Impor peta**. The archive is validated in the browser, stored in IndexedDB, and read through PMTiles' browser `FileSource`. The selected archive is never uploaded by the app.
-
-Supported archives in this initial map foundation:
-
-- Raster PMTiles: PNG, JPEG, WebP, and AVIF.
-- Vector PMTiles: MVT archives using the Protomaps basemap layer schema. The initial local style renders land use, water, buildings, and roads. Text labels and POI symbols will be added with locally bundled glyph and sprite assets in a later map polish pass.
-
-No basemap dataset is committed to this repository. Map datasets can be large and have different geographic coverage and licensing terms; importing a region-specific file keeps the initial PWA download small. Always retain the archive's required attribution and follow its data licence.
-
-## Offline and privacy boundaries
-
-- The service worker precaches the built app shell and static assets.
-- The map archive is stored separately in IndexedDB, not in the service worker cache.
-- MapLibre reads the selected archive from a local browser `File` object using PMTiles `FileSource`. There is no remote style URL, tile URL, geocoder, analytics script, or application API in this setup.
-- This foundation does not call the Geolocation API. GPS access will only be introduced later behind an explicit one-shot user action with `getCurrentPosition()`; continuous `watchPosition()` tracking is not part of the design.
-- Clearing browser site data can remove locally stored maps and, later, trip history. Users should export important trip records when an export feature is added.
-
-The app's first visit and updates still require the browser to download the web app from its hosting origin. After the service worker has installed and the map archive has been imported, the app and map can be used offline.
+- Vite + TypeScript.
+- MapLibre GL JS with OpenStreetMap raster tiles.
+- IndexedDB through `idb-keyval`.
+- Vite PWA / Workbox for the application shell.
