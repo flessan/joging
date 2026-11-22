@@ -22,7 +22,11 @@ const el = {
   sessionTitle: $("#session-title"),
   followToggle: $("#follow-toggle"),
   drawerLevelLabel: $("#drawer-level-label"),
-  detailsDrawer: $("#details-drawer") as HTMLDetailsElement,
+  detailsDrawer: $("#details-drawer") as HTMLDialogElement,
+  drawerTrigger: $("#open-details-drawer") as HTMLButtonElement,
+  drawerClose: $("#close-details-drawer") as HTMLButtonElement,
+  drawerDragHandle: $("#drawer-drag-handle") as HTMLDivElement,
+  drawerContent: $("#drawer-content") as HTMLDivElement,
   mapHint: $("#map-hint"),
   selectedLabel: $("#selected-label"),
   selectedCoordinate: $("#selected-coordinate"),
@@ -131,6 +135,20 @@ function notify(message: string, isError = false): void {
   el.toast.hidden = false;
   if (toastTimeout) clearTimeout(toastTimeout);
   toastTimeout = setTimeout(() => { el.toast.hidden = true; }, 3600);
+}
+
+function syncStatsDrawerState(): void {
+  el.drawerTrigger.setAttribute("aria-expanded", String(el.detailsDrawer.open));
+}
+
+function openStatsDrawer(): void {
+  if (el.detailsDrawer.open) return;
+  el.detailsDrawer.showModal();
+  syncStatsDrawerState();
+}
+
+function closeStatsDrawer(): void {
+  if (el.detailsDrawer.open) el.detailsDrawer.close();
 }
 
 function formatDuration(milliseconds: number): string {
@@ -649,8 +667,11 @@ function showResult(trip: SavedTrip, unlocked: typeof BADGES[number][]): void {
   }
 
   el.result.hidden = false;
-  el.detailsDrawer.open = true;
-  el.detailsDrawer.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  openStatsDrawer();
+  requestAnimationFrame(() => {
+    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    el.result.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "start" });
+  });
 }
 
 function renderProgress(): void {
@@ -759,6 +780,49 @@ el.clearSelection.addEventListener("click", () => {
   el.selectedCoordinate.textContent = "GPS akan digunakan saat kamu memulai";
 });
 el.closeResult.addEventListener("click", () => { el.result.hidden = true; });
+el.drawerTrigger.addEventListener("click", openStatsDrawer);
+el.drawerClose.addEventListener("click", closeStatsDrawer);
+el.detailsDrawer.addEventListener("close", syncStatsDrawerState);
+
+// Native dialog handles Escape and focus restoration. Close only when the actual backdrop is clicked.
+el.detailsDrawer.addEventListener("click", (event: MouseEvent) => {
+  if (event.target !== el.detailsDrawer) return;
+  const rect = el.detailsDrawer.getBoundingClientRect();
+  const clickedOutside = event.clientX < rect.left || event.clientX > rect.right
+    || event.clientY < rect.top || event.clientY > rect.bottom;
+  if (clickedOutside) closeStatsDrawer();
+});
+
+// The grab handle supports a short downward swipe without stealing scroll gestures from the drawer body.
+let drawerPointer: { id: number; startY: number; startedAt: number } | null = null;
+function resetDrawerDrag(): void {
+  drawerPointer = null;
+  el.detailsDrawer.classList.remove("is-dragging");
+  el.detailsDrawer.style.removeProperty("translate");
+}
+el.drawerDragHandle.addEventListener("pointerdown", (event: PointerEvent) => {
+  if (!el.detailsDrawer.open || (event.pointerType === "mouse" && event.button !== 0)) return;
+  drawerPointer = { id: event.pointerId, startY: event.clientY, startedAt: performance.now() };
+  el.detailsDrawer.classList.add("is-dragging");
+  el.drawerDragHandle.setPointerCapture(event.pointerId);
+});
+el.drawerDragHandle.addEventListener("pointermove", (event: PointerEvent) => {
+  if (!drawerPointer || drawerPointer.id !== event.pointerId) return;
+  const offset = Math.max(0, Math.min(window.innerHeight, event.clientY - drawerPointer.startY));
+  el.detailsDrawer.style.setProperty("translate", `0 ${offset}px`);
+});
+el.drawerDragHandle.addEventListener("pointerup", (event: PointerEvent) => {
+  if (!drawerPointer || drawerPointer.id !== event.pointerId) return;
+  const distance = event.clientY - drawerPointer.startY;
+  const elapsed = Math.max(1, performance.now() - drawerPointer.startedAt);
+  const shouldClose = distance > 110 || (distance > 32 && distance / elapsed > 0.65);
+  resetDrawerDrag();
+  if (shouldClose) closeStatsDrawer();
+});
+el.drawerDragHandle.addEventListener("pointercancel", resetDrawerDrag);
+el.drawerDragHandle.addEventListener("lostpointercapture", () => {
+  if (drawerPointer) resetDrawerDrag();
+});
 el.export.addEventListener("click", exportHistory);
 
 document.addEventListener("visibilitychange", () => {
