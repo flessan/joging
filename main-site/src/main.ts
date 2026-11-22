@@ -206,9 +206,9 @@ function setPhase(nextPhase: Phase): void {
   el.status.className = `session-status is-${nextPhase}`;
 
   if (nextPhase === "idle") {
-    el.help.textContent = "Tekan mulai untuk mengambil satu titik GPS dan memulai timer. Kamu juga bisa memilih titik di peta jika GPS tidak tersedia.";
+    el.help.textContent = "Tekan Mulai untuk mengambil posisi awal dan mengaktifkan jejak GPS. Kamu juga bisa memakai Perbarui lokasi atau memilih titik manual di peta.";
   } else if (nextPhase === "active") {
-    el.help.textContent = "Perjalanan aktif. Tekan Istirahat untuk menyimpan checkpoint dan menjeda timer, atau Selesai untuk mengakhiri.";
+    el.help.textContent = "Jejak GPS sedang direkam saat halaman terbuka. Tekan Istirahat untuk menyimpan pin tidur dan menjeda timer, atau Selesai untuk mengakhiri.";
   } else {
     el.help.textContent = "Timer aktif dijeda. Tekan Lanjutkan saat siap bergerak lagi.";
   }
@@ -256,6 +256,7 @@ async function capturePoint(label: RoutePoint["label"]): Promise<RoutePoint> {
     if (selectedPoint) {
       const manualPoint: RoutePoint = { ...selectedPoint, at: Date.now(), label, source: "manual" };
       selectedPoint = null;
+      mapHandle?.setSelected(null);
       el.selectedLabel.textContent = "Checkpoint manual tersimpan";
       el.selectedCoordinate.textContent = `${manualPoint.latitude.toFixed(5)}, ${manualPoint.longitude.toFixed(5)}`;
       return manualPoint;
@@ -366,6 +367,7 @@ function startLocationTrail(): void {
   el.mapState.textContent = "Mengaktifkan jejak GPS...";
   locationWatchId = navigator.geolocation.watchPosition(
     (position) => {
+      lastLocationWatchError = null;
       if (appendGpsTrailPoint(position)) {
         el.mapState.textContent = "Jejak GPS aktif";
       }
