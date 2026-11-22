@@ -23,6 +23,7 @@ const el = {
   selectedLabel: $("#selected-label"),
   selectedCoordinate: $("#selected-coordinate"),
   clearSelection: $("#clear-selection"),
+  refreshLocation: $("#refresh-location"),
   start: $("#start-button"),
   rest: $("#rest-button"),
   resume: $("#resume-button"),
@@ -71,6 +72,8 @@ let phase: Phase = "idle";
 let selectedPoint: Coordinate | null = null;
 let busy = false;
 let toastTimeout: ReturnType<typeof setTimeout> | undefined;
+let locationWatchId: number | null = null;
+let lastLocationWatchError: number | null = null;
 
 const BADGES = [
   { id: "first-trip", title: "Langkah Pertama", description: "Selesaikan perjalanan pertamamu.", reward: 30, requirement: "1 perjalanan" },
@@ -85,10 +88,23 @@ let mapHandle: TripMapHandle | undefined;
 mapHandle = createTripMap(
   el.map,
   (coordinate) => {
-    selectedPoint = coordinate;
     el.selectedLabel.textContent = "Titik manual dipilih";
     el.selectedCoordinate.textContent = `${coordinate.latitude.toFixed(5)}, ${coordinate.longitude.toFixed(5)}`;
     el.mapHint.hidden = true;
+
+    if (phase === "active" && currentTrip) {
+      selectedPoint = null;
+      addPoint({
+        ...coordinate,
+        at: Date.now(),
+        label: "Jejak",
+        source: "manual"
+      });
+      void persist().catch(() => notify("Checkpoint manual gagal disimpan.", true));
+      notify("Titik manual ditambahkan ke jejak perjalanan.");
+    } else {
+      selectedPoint = coordinate;
+    }
   },
   () => {
     el.mapState.textContent = "Peta siap";
@@ -253,7 +269,7 @@ async function capturePoint(label: RoutePoint["label"]): Promise<RoutePoint> {
     el.selectedLabel.textContent = "Lokasi GPS terakhir";
     el.selectedCoordinate.textContent = `${point.latitude.toFixed(5)}, ${point.longitude.toFixed(5)}${Number.isFinite(position.coords.accuracy) ? ` · akurasi ±${Math.round(position.coords.accuracy)} m` : ""}`;
     el.mapHint.hidden = true;
-    mapHandle?.setSelected(point);
+    mapHandle?.setCurrentLocation(point);
     mapHandle?.flyTo(point);
     return point;
   } catch (error) {
@@ -269,23 +285,145 @@ async function capturePoint(label: RoutePoint["label"]): Promise<RoutePoint> {
 function addPoint(point: RoutePoint): void {
   if (!currentTrip) return;
   const previous = currentTrip.points[currentTrip.points.length - 1];
-  const separation = previous
-    ? calculateDistance([previous, point])
-    : 0;
+  const separation = previous ? calculateDistance([previous, point]) : 0;
 
-  // Very small GPS jitter is not useful as a route segment.
-  if (previous && separation < 3) {
-    currentTrip.points[currentTrip.points.length - 1] = point;
-  } else {
-    currentTrip.points.push(point);
+  // Ignore tiny jitter only between ordinary trail samples. Keep rest/start/end pins.
+  if (previous && previous.label === "Jejak" && point.label === "Jejak" && separation < 4) {
+    return;
   }
 
+  currentTrip.points.push(point);
   mapHandle?.setRoute(currentTrip.points);
+  updateLiveStats();
 }
 
 async function persist(): Promise<void> {
   appData.activeTrip = currentTrip;
   await saveAppData(appData);
+}
+
+function stopLocationTrail(): void {
+  if (locationWatchId !== null && "geolocation" in navigator) {
+    navigator.geolocation.clearWatch(locationWatchId);
+  }
+  locationWatchId = null;
+}
+
+function appendGpsTrailPoint(position: GeolocationPosition): boolean {
+  if (phase !== "active" || !currentTrip) return false;
+
+  const accuracy = position.coords.accuracy;
+  const coordinate: Coordinate = {
+    latitude: position.coords.latitude,
+    longitude: position.coords.longitude
+  };
+
+  mapHandle?.setCurrentLocation(coordinate);
+
+  // Avoid drawing noisy segments when the browser reports a weak GPS fix.
+  if (Number.isFinite(accuracy) && accuracy > 75) {
+    el.mapState.textContent = "Menunggu sinyal GPS lebih akurat";
+    return false;
+  }
+
+  const previous = currentTrip.points[currentTrip.points.length - 1];
+  const point: RoutePoint = {
+    ...coordinate,
+    at: position.timestamp || Date.now(),
+    label: "Jejak",
+    source: "gps"
+  };
+
+  if (previous) {
+    const distance = calculateDistance([previous, point]);
+    const elapsedSeconds = Math.max(1, (point.at - previous.at) / 1000);
+    // Drop implausible jumps instead of inflating route distance.
+    if (distance / elapsedSeconds > 15) {
+      el.mapState.textContent = "Menyaring lonjakan GPS";
+      return false;
+    }
+    if (distance < 4) return false;
+  }
+
+  addPoint(point);
+  el.mapState.textContent = "Jejak GPS aktif";
+  void persist().catch(() => notify("Penyimpanan checkpoint GPS gagal.", true));
+  return true;
+}
+
+function startLocationTrail(): void {
+  if (locationWatchId !== null || phase !== "active") return;
+  if (!("geolocation" in navigator)) {
+    el.mapState.textContent = "GPS tidak tersedia";
+    notify("GPS tidak tersedia. Kamu masih bisa menambahkan titik manual di peta.", true);
+    return;
+  }
+
+  lastLocationWatchError = null;
+  el.mapState.textContent = "Mengaktifkan jejak GPS...";
+  locationWatchId = navigator.geolocation.watchPosition(
+    (position) => {
+      if (appendGpsTrailPoint(position)) {
+        el.mapState.textContent = "Jejak GPS aktif";
+      }
+    },
+    (error) => {
+      lastLocationWatchError = error.code;
+      if (error.code === 1) {
+        stopLocationTrail();
+        el.mapState.textContent = "Izin GPS ditolak";
+        notify("Izin GPS ditolak. Gunakan Perbarui lokasi atau checkpoint manual.", true);
+      } else {
+        el.mapState.textContent = "Menunggu sinyal GPS";
+        notify("Sinyal GPS belum stabil. Jejak akan dilanjutkan saat lokasi tersedia.", true);
+      }
+    },
+    {
+      enableHighAccuracy: true,
+      maximumAge: 2500,
+      timeout: 20000
+    }
+  );
+}
+
+async function refreshCurrentLocation(): Promise<void> {
+  el.mapState.textContent = "Memperbarui lokasi...";
+  const position = await getOneShotPosition();
+  const coordinate: Coordinate = {
+    latitude: position.coords.latitude,
+    longitude: position.coords.longitude
+  };
+
+  mapHandle?.setCurrentLocation(coordinate);
+  mapHandle?.flyTo(coordinate);
+  el.selectedLabel.textContent = "Lokasi saat ini";
+  el.selectedCoordinate.textContent = `${coordinate.latitude.toFixed(5)}, ${coordinate.longitude.toFixed(5)} · akurasi ±${Math.round(position.coords.accuracy)} m`;
+  el.mapHint.hidden = true;
+
+  if (phase === "active" && currentTrip) {
+    selectedPoint = null;
+    if (position.coords.accuracy <= 75) {
+      const point: RoutePoint = {
+        ...coordinate,
+        at: position.timestamp || Date.now(),
+        label: "Jejak",
+        source: "gps"
+      };
+      const previous = currentTrip.points[currentTrip.points.length - 1];
+      if (!previous || calculateDistance([previous, point]) >= 4) {
+        addPoint(point);
+        await persist();
+      }
+      notify("Lokasi terbaru ditambahkan ke jejak perjalanan.");
+    } else {
+      notify("Lokasi ditemukan, tetapi akurasinya terlalu rendah untuk ditambahkan ke jejak.", true);
+    }
+  } else {
+    selectedPoint = coordinate;
+    notify("Lokasi diperbarui. Titik ini siap dipakai sebagai checkpoint berikutnya.");
+  }
+
+  if (phase !== "active") el.mapState.textContent = "Lokasi diperbarui";
 }
 
 async function startJourney(): Promise<void> {
@@ -302,12 +440,14 @@ async function startJourney(): Promise<void> {
   await persist();
   mapHandle?.setRoute(currentTrip.points);
   setPhase("active");
-  notify(point.source === "gps" ? "Perjalanan dimulai. GPS sudah berhenti mengambil lokasi." : "Perjalanan dimulai dari titik manual.");
+  startLocationTrail();
+  notify(point.source === "gps" ? "Perjalanan dimulai. Jejak GPS aktif selama perjalanan berjalan." : "Perjalanan dimulai dari titik manual. Jejak GPS aktif.");
 }
 
 async function pauseJourney(): Promise<void> {
   if (!currentTrip || phase !== "active") return;
   const point = await capturePoint("Istirahat");
+  stopLocationTrail();
   const now = Date.now();
   currentTrip.activeMs += Math.max(0, now - currentTrip.lastResumedAt);
   currentTrip.pausedAt = now;
@@ -326,7 +466,8 @@ async function resumeJourney(): Promise<void> {
   delete currentTrip.pausedAt;
   await persist();
   setPhase("active");
-  notify("Perjalanan dilanjutkan.");
+  startLocationTrail();
+  notify("Perjalanan dilanjutkan. Jejak GPS aktif kembali.");
 }
 
 function localDayKey(timestamp: number): string {
@@ -420,6 +561,7 @@ function completeTrip(point?: RoutePoint): void {
 
 async function finishJourney(): Promise<void> {
   if (!currentTrip || phase === "idle") return;
+  stopLocationTrail();
   let point: RoutePoint | undefined;
   try {
     point = await capturePoint("Selesai");
@@ -435,7 +577,7 @@ async function finishJourney(): Promise<void> {
 async function runAction(action: () => Promise<void>): Promise<void> {
   if (busy) return;
   busy = true;
-  [el.start, el.rest, el.resume, el.finish, el.finishPaused].forEach((button) => {
+  [el.start, el.rest, el.resume, el.finish, el.finishPaused, el.refreshLocation].forEach((button) => {
     (button as HTMLButtonElement).disabled = true;
   });
   try {
@@ -444,7 +586,7 @@ async function runAction(action: () => Promise<void>): Promise<void> {
     notify(error instanceof Error ? error.message : "Aksi gagal dilakukan.", true);
   } finally {
     busy = false;
-    [el.start, el.rest, el.resume, el.finish, el.finishPaused].forEach((button) => {
+    [el.start, el.rest, el.resume, el.finish, el.finishPaused, el.refreshLocation].forEach((button) => {
       (button as HTMLButtonElement).disabled = false;
     });
     setPhase(phase);
@@ -569,6 +711,7 @@ async function initialize(): Promise<void> {
       notify("Perjalanan sebelumnya dipulihkan dari penyimpanan lokal.");
     }
     setPhase(phase);
+    if (phase === "active") startLocationTrail();
     renderAll();
   } catch {
     notify("Penyimpanan lokal tidak dapat dibaca. Riwayat mungkin tidak tersedia.", true);
@@ -580,6 +723,7 @@ el.rest.addEventListener("click", () => void runAction(pauseJourney));
 el.resume.addEventListener("click", () => void runAction(resumeJourney));
 el.finish.addEventListener("click", () => void runAction(finishJourney));
 el.finishPaused.addEventListener("click", () => void runAction(finishJourney));
+el.refreshLocation.addEventListener("click", () => void runAction(refreshCurrentLocation));
 el.clearSelection.addEventListener("click", () => {
   selectedPoint = null;
   mapHandle?.setSelected(null);
@@ -588,6 +732,15 @@ el.clearSelection.addEventListener("click", () => {
 });
 el.closeResult.addEventListener("click", () => { el.result.hidden = true; });
 el.export.addEventListener("click", exportHistory);
+
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden && phase === "active") {
+    stopLocationTrail();
+    el.mapState.textContent = "Jejak GPS dijeda saat aplikasi tersembunyi";
+  } else if (!document.hidden && phase === "active") {
+    startLocationTrail();
+  }
+});
 
 const updateSW = registerSW({
   onNeedRefresh() { el.updateBanner.hidden = false; },
