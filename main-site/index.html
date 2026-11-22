@@ -3,124 +3,164 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <meta name="theme-color" content="#eef5f7" />
-    <meta name="description" content="Joging adalah pencatat perjalanan pribadi. Catat checkpoint, ukur jarak, dan kumpulkan pencapaian tanpa pelacakan GPS otomatis." />
+    <meta name="theme-color" content="#f5f8f9" />
+    <meta name="description" content="Joging - pencatat jejak perjalanan pribadi dengan GPS dan riwayat lokal." />
     <meta name="referrer" content="strict-origin-when-cross-origin" />
-    <title>Joging - Go your own way</title>
+    <title>Joging - Route tracker</title>
   </head>
   <body>
     <div class="app-shell">
-      <header class="topbar">
-        <a class="brand" href="./" aria-label="Joging, beranda">
-          <span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 32 32" fill="none"><path d="M5 22.5 12.3 10l4.5 7.2 3.1-4.7L27 22.5H5Z" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="23.2" cy="8.1" r="2.1" fill="currentColor"/></svg></span>
-          <span>joging</span>
-        </a>
-        <div class="topbar-right">
-          <span class="privacy-indicator"><span class="privacy-dot"></span>Data tersimpan di perangkat</span>
-          <button class="icon-button" id="export-button" type="button" aria-label="Ekspor riwayat" title="Ekspor riwayat"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 3v12m0-12 4 4m-4-4L8 7M5 14v5a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+      <main class="map-screen" aria-label="Joging route tracker">
+        <div id="map" aria-label="Peta perjalanan interaktif"></div>
+
+        <div class="map-top-overlay">
+          <div class="map-brand-pill">
+            <span class="brand-mark" aria-hidden="true">
+              <svg viewBox="0 0 32 32" fill="none"><path d="M5 22.5 12.3 10l4.5 7.2 3.1-4.7L27 22.5H5Z" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="23.2" cy="8.1" r="2.1" fill="currentColor"/></svg>
+            </span>
+            <strong>joging</strong>
+            <span class="privacy-dot" title="Riwayat disimpan lokal"></span>
+          </div>
+          <div class="map-top-actions">
+            <button class="map-action-button" id="refresh-location" type="button" aria-label="Perbarui lokasi" title="Perbarui lokasi">
+              <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="7.5" stroke="currentColor" stroke-width="1.7"/><circle cx="12" cy="12" r="2.2" fill="currentColor"/><path d="M12 2v3M22 12h-3M12 22v-3M2 12h3" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+            </button>
+            <button class="map-action-button" id="export-button" type="button" aria-label="Ekspor riwayat" title="Ekspor riwayat">
+              <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 3v12m0-12 4 4m-4-4L8 7M5 14v5a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
+          </div>
         </div>
-      </header>
 
-      <main>
-        <section class="welcome">
-          <div>
-            <p class="eyebrow">YOUR PERSONAL JOURNEY LOG</p>
-            <h1>Keluar sebentar.<br /><span>Pulang bawa cerita.</span></h1>
-            <p class="welcome-copy">Mulai jalan, tandai tempat istirahat, lalu lihat ringkasan perjalananmu. Tanpa akun dan tanpa GPS yang merekam diam-diam.</p>
-          </div>
-          <div class="welcome-card">
-            <span class="welcome-card-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M12 3 19 6v5c0 4.8-2.9 8-7 10-4.1-2-7-5.2-7-10V6l7-3Z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="m9 12 2 2 4-4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
-            <span><strong>Privasi diutamakan</strong><small>GPS hanya aktif saat kamu menekan tombol.</small></span>
-          </div>
-        </section>
+        <div class="map-status-pill"><span class="map-state-dot"></span><span id="map-state-label">Peta siap</span></div>
+        <div class="map-hint" id="map-hint">
+          <span class="map-hint-mark"></span>
+          <span>Ketuk peta untuk menambahkan titik rute</span>
+        </div>
 
-        <section class="progress-card" aria-label="Progres petualangan">
-          <div class="level-emblem" aria-hidden="true"><span id="level-number">1</span></div>
-          <div class="level-copy">
-            <div class="level-topline"><strong id="level-name">Level 1 · Pemula</strong><span id="xp-label">0 / 100 XP</span></div>
-            <div class="xp-track"><span id="xp-progress"></span></div>
-            <small id="xp-next">100 XP menuju level berikutnya</small>
-          </div>
-          <div class="streak-stat"><strong id="streak-count">0</strong><span>hari beruntun</span></div>
-        </section>
+        <button class="follow-button" id="follow-toggle" type="button" aria-pressed="true">
+          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="7.5" stroke="currentColor" stroke-width="1.7"/><circle cx="12" cy="12" r="2.2" fill="currentColor"/><path d="M12 2v3M22 12h-3M12 22v-3M2 12h3" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+          <span>Ikuti lokasi</span>
+        </button>
 
-        <section class="workspace" aria-label="Peta dan kontrol perjalanan">
-          <div class="map-column">
-            <div class="section-heading map-heading">
-              <div><p class="eyebrow">LIVE MAP</p><h2>Area perjalanan</h2></div>
-              <div class="map-heading-tools">
-                <button class="button button-secondary map-location-button" id="refresh-location" type="button">
-                  <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="7.5" stroke="currentColor" stroke-width="1.7"/><circle cx="12" cy="12" r="2.2" fill="currentColor"/><path d="M12 2v3M22 12h-3M12 22v-3M2 12h3" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
-                  Perbarui lokasi
-                </button>
-                <span class="map-state"><span class="map-state-dot"></span><span id="map-state-label">Peta siap</span></span>
-              </div>
+        <section class="bottom-sheet" id="bottom-sheet" aria-label="Kontrol perjalanan">
+          <div class="sheet-grabber" aria-hidden="true"><span></span></div>
+          <div class="sheet-heading">
+            <div class="sheet-title-group">
+              <span class="sheet-kicker">PERJALANAN</span>
+              <strong id="session-title">Siap berangkat?</strong>
             </div>
-            <div class="map-frame"><div id="map" aria-label="Peta interaktif"></div><div class="map-hint" id="map-hint"><span class="map-hint-mark"></span><span>Ketuk peta untuk memilih atau menambahkan titik manual</span></div></div>
-            <div class="map-caption">
-              <span><strong id="selected-label">Belum ada titik manual</strong><small id="selected-coordinate">GPS akan digunakan saat kamu memulai</small></span>
-              <button class="text-button" id="clear-selection" type="button">Hapus pilihan</button>
+            <span class="session-status" id="session-status"><span></span>Belum dimulai</span>
+          </div>
+
+          <div class="live-metrics">
+            <div class="primary-metric">
+              <span>Jarak</span>
+              <strong id="live-distance">0.00 <small>km</small></strong>
             </div>
-            <p class="map-attribution-note">Peta oleh <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap contributors</a>. Perlu internet untuk memuat peta.</p>
-          </div>
-
-          <aside class="journey-panel">
-            <div class="journey-panel-head"><div><p class="eyebrow">YOUR SESSION</p><h2>Perjalanan ini</h2></div><span class="session-status" id="session-status"><span></span>Belum dimulai</span></div>
-            <div class="live-metrics">
-              <div class="primary-metric"><span>Jarak estimasi</span><strong id="live-distance">0.00 <small>km</small></strong></div>
-              <div class="primary-metric"><span>Durasi</span><strong id="live-duration">00:00:00</strong></div>
-              <div class="small-metric"><span>Titik rute</span><strong id="live-checkpoints">0</strong></div>
-              <div class="small-metric"><span>Kecepatan rata-rata</span><strong id="live-speed">- <small>km/j</small></strong></div>
+            <div class="primary-metric duration-metric">
+              <span>Durasi</span>
+              <strong id="live-duration">00:00:00</strong>
             </div>
-            <div class="session-actions">
-              <button class="button button-primary button-wide" id="start-button" type="button"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m8 5 11 7-11 7V5Z" fill="currentColor"/></svg>Mulai perjalanan</button>
-              <div class="action-pair" id="active-actions" hidden>
-                <button class="button button-secondary" id="rest-button" type="button"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M19.2 14.8A8.2 8.2 0 0 1 9.2 4.7a8.5 8.5 0 1 0 10 10.1Z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M15.2 5.1h4l-4 3.8h4M12.4 10.2h3.2l-3.2 3h3.2" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>Istirahat</button>
-                <button class="button button-danger" id="finish-button" type="button"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2" fill="currentColor"/></svg>Selesai</button>
-              </div>
-              <div class="action-pair" id="paused-actions" hidden>
-                <button class="button button-primary" id="resume-button" type="button"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m8 5 11 7-11 7V5Z" fill="currentColor"/></svg>Lanjutkan</button>
-                <button class="button button-danger" id="finish-paused-button" type="button">Akhiri perjalanan</button>
-              </div>
+            <div class="small-metric">
+              <span>Titik rute</span>
+              <strong id="live-checkpoints">0</strong>
             </div>
-            <p class="session-help" id="session-help">Tekan Mulai untuk merekam jejak GPS selama perjalanan. Ketuk peta untuk memakai checkpoint manual.</p>
-            <div class="privacy-mini"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="5" y="10" width="14" height="11" rx="2" stroke="currentColor" stroke-width="1.6"/><path d="M8 10V7a4 4 0 1 1 8 0v3M12 14v3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg><span>Jejak GPS hanya aktif saat perjalanan berjalan dan aplikasi terbuka.</span></div>
-          </aside>
-        </section>
-
-        <section class="result-section" id="result-section" hidden aria-live="polite">
-          <div class="result-heading"><div><p class="eyebrow">JOURNEY COMPLETED</p><h2>Perjalanan tersimpan.</h2><p id="result-subtitle">Semua statistik disimpan secara lokal.</p></div><button class="icon-button" id="close-result" type="button" aria-label="Tutup ringkasan"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button></div>
-          <div class="result-primary"><div><span>Total jarak estimasi</span><strong id="result-distance">0.00 km</strong></div><div class="result-xp"><span>XP didapat</span><strong id="result-xp">+0 XP</strong></div></div>
-          <div class="result-grid">
-            <div class="result-stat"><span>Durasi total</span><strong id="result-total-time">00:00</strong></div>
-            <div class="result-stat"><span>Waktu aktif</span><strong id="result-active-time">00:00</strong></div>
-            <div class="result-stat"><span>Waktu istirahat</span><strong id="result-rest-time">00:00</strong></div>
-            <div class="result-stat"><span>Pace rata-rata</span><strong id="result-pace">-</strong></div>
-            <div class="result-stat"><span>Kecepatan rata-rata</span><strong id="result-speed">-</strong></div>
-            <div class="result-stat"><span>Titik rute</span><strong id="result-stops">0</strong></div>
+            <div class="small-metric">
+              <span>Kecepatan rata-rata</span>
+              <strong id="live-speed">- <small>km/j</small></strong>
+            </div>
           </div>
-          <div class="earned-badges" id="earned-badges" hidden></div>
-          <p class="estimate-note">Jarak adalah estimasi garis lurus antar-checkpoint GPS atau titik manual. Joging tidak merekam jalur secara kontinu, sehingga jarak bisa lebih pendek dari rute jalan sebenarnya.</p>
-        </section>
 
-        <section class="lower-grid">
-          <div class="content-card">
-            <div class="section-heading"><div><p class="eyebrow">YOUR COLLECTION</p><h2>Pencapaian</h2><p class="section-subtitle">Buka lencana dari perjalanan yang kamu selesaikan.</p></div><span class="count-pill" id="badge-count">0 / 6</span></div>
-            <div class="badge-grid" id="badge-grid"></div>
+          <div class="session-actions">
+            <button class="button button-primary button-wide" id="start-button" type="button">
+              <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m8 5 11 7-11 7V5Z" fill="currentColor"/></svg>
+              Mulai perjalanan
+            </button>
+            <div class="action-pair" id="active-actions" hidden>
+              <button class="button button-secondary" id="rest-button" type="button">
+                <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M19.2 14.8A8.2 8.2 0 0 1 9.2 4.7a8.5 8.5 0 1 0 10 10.1Z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M15.2 5.1h4l-4 3.8h4M12.4 10.2h3.2l-3.2 3h3.2" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                Istirahat
+              </button>
+              <button class="button button-danger" id="finish-button" type="button">
+                <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2" fill="currentColor"/></svg>
+                Selesai
+              </button>
+            </div>
+            <div class="action-pair" id="paused-actions" hidden>
+              <button class="button button-primary" id="resume-button" type="button">
+                <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m8 5 11 7-11 7V5Z" fill="currentColor"/></svg>
+                Lanjutkan
+              </button>
+              <button class="button button-danger" id="finish-paused-button" type="button">Akhiri perjalanan</button>
+            </div>
           </div>
-          <div class="content-card history-card">
-            <div class="section-heading"><div><p class="eyebrow">YOUR FOOTPRINT</p><h2>Riwayat perjalanan</h2><p class="section-subtitle">Tersimpan di browser ini saja.</p></div><span class="count-pill" id="trip-count">0 perjalanan</span></div>
-            <div class="history-list" id="history-list"><div class="empty-history"><span class="empty-history-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M4 6.5h16M6 3v3.5M18 3v3.5M5 10h14v10H5V10Z" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="m9 15 2 2 4-4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></span><strong>Belum ada perjalanan</strong><span>Perjalanan pertamamu akan muncul di sini.</span></div></div>
-          </div>
-        </section>
 
-        <section class="privacy-card"><span class="privacy-card-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M12 3 19 6v5c0 4.8-2.9 8-7 10-4.1-2-7-5.2-7-10V6l7-3Z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="m9 12 2 2 4-4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span><div><strong>Catatan privasi peta</strong><p>Koordinat checkpoint, jejak GPS, dan riwayat disimpan di perangkat, bukan dikirim oleh Joging ke server. Jejak GPS hanya aktif selama perjalanan dimulai dan halaman aplikasi terlihat, lalu berhenti saat istirahat, selesai, atau aplikasi disembunyikan. Untuk menampilkan peta, browser meminta tile dari OpenStreetMap yang dapat menerima alamat IP dan area peta yang dilihat. Peta membutuhkan internet; riwayat tetap tersimpan lokal.</p></div></section>
+          <div class="sheet-bottom-row">
+            <span class="location-readout">
+              <strong id="selected-label">Menunggu lokasi</strong>
+              <small id="selected-coordinate">Perbarui lokasi atau mulai perjalanan</small>
+            </span>
+            <button class="text-button" id="clear-selection" type="button">Hapus pin</button>
+          </div>
+          <p class="session-help" id="session-help">Mulai untuk merekam jejak GPS. Kamu juga bisa mengetuk peta untuk menambah titik manual.</p>
+
+          <details class="details-drawer" id="details-drawer">
+            <summary>
+              <span>Statistik & pencapaian</span>
+              <span class="drawer-summary-meta"><span id="level-name">Level 1 · Pemula</span><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m6 9 6 6 6-6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+            </summary>
+            <div class="drawer-content">
+              <section class="progress-card" aria-label="Progres petualangan">
+                <div class="level-emblem" aria-hidden="true"><span id="level-number">1</span></div>
+                <div class="level-copy">
+                  <div class="level-topline"><strong id="drawer-level-label">Level 1</strong><span id="xp-label">0 / 100 XP</span></div>
+                  <div class="xp-track"><span id="xp-progress"></span></div>
+                  <small id="xp-next">100 XP menuju level berikutnya</small>
+                </div>
+                <div class="streak-stat"><strong id="streak-count">0</strong><span>hari streak</span></div>
+              </section>
+
+              <section class="result-section" id="result-section" hidden aria-live="polite">
+                <div class="result-heading">
+                  <div><p class="eyebrow">PERJALANAN SELESAI</p><h2>Perjalanan tersimpan.</h2><p id="result-subtitle">Semua statistik disimpan secara lokal.</p></div>
+                  <button class="icon-button" id="close-result" type="button" aria-label="Tutup ringkasan"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
+                </div>
+                <div class="result-primary"><div><span>Total jarak</span><strong id="result-distance">0.00 km</strong></div><div class="result-xp"><span>XP didapat</span><strong id="result-xp">+0 XP</strong></div></div>
+                <div class="result-grid">
+                  <div class="result-stat"><span>Durasi total</span><strong id="result-total-time">00:00</strong></div>
+                  <div class="result-stat"><span>Waktu aktif</span><strong id="result-active-time">00:00</strong></div>
+                  <div class="result-stat"><span>Waktu istirahat</span><strong id="result-rest-time">00:00</strong></div>
+                  <div class="result-stat"><span>Pace rata-rata</span><strong id="result-pace">-</strong></div>
+                  <div class="result-stat"><span>Kecepatan rata-rata</span><strong id="result-speed">-</strong></div>
+                  <div class="result-stat"><span>Titik rute</span><strong id="result-stops">0</strong></div>
+                </div>
+                <div class="earned-badges" id="earned-badges" hidden></div>
+                <p class="estimate-note">Jarak adalah estimasi dari titik GPS yang berhasil direkam. Kualitas GPS dan jeda saat aplikasi tidak terlihat dapat memengaruhi hasil.</p>
+              </section>
+
+              <section class="content-card">
+                <div class="section-heading"><div><p class="eyebrow">PROGRES</p><h2>Pencapaian</h2><p class="section-subtitle">Lencana yang terbuka dari perjalananmu.</p></div><span class="count-pill" id="badge-count">0 / 6</span></div>
+                <div class="badge-grid" id="badge-grid"></div>
+              </section>
+
+              <section class="content-card history-card">
+                <div class="section-heading"><div><p class="eyebrow">RIWAYAT</p><h2>Perjalanan sebelumnya</h2><p class="section-subtitle">Tersimpan di browser ini saja.</p></div><span class="count-pill" id="trip-count">0 perjalanan</span></div>
+                <div class="history-list" id="history-list"><div class="empty-history"><strong>Belum ada perjalanan</strong><span>Perjalanan pertamamu akan muncul di sini.</span></div></div>
+              </section>
+
+              <section class="privacy-card">
+                <strong>Privasi</strong>
+                <p>Jejak GPS hanya aktif selama perjalanan berjalan dan halaman terlihat. Riwayat tersimpan lokal. Peta menggunakan tile OpenStreetMap melalui internet.</p>
+              </section>
+            </div>
+          </details>
+        </section>
       </main>
 
       <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
       <div class="update-banner" id="update-banner" hidden><span>Pembaruan Joging tersedia.</span><button class="button button-secondary" id="update-button" type="button">Muat ulang</button></div>
-      <footer class="app-footer"><span>joging</span><span>Move at your own pace.</span><a href="https://www.openstreetmap.org/fixthemap" target="_blank" rel="noreferrer">Laporkan masalah peta</a></footer>
+      <footer class="map-attribution"><span>© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a></span><span>Riwayat tersimpan lokal</span></footer>
     </div>
-    <script type="module" src="/src/main.ts"></script>
+    <script type="module" src="./src/main.ts"></script>
   </body>
 </html>
