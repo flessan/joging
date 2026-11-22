@@ -824,7 +824,14 @@ el.clearSelection.addEventListener("click", () => {
 el.closeResult.addEventListener("click", () => { el.result.hidden = true; });
 el.drawerTrigger.addEventListener("click", openStatsDrawer);
 el.drawerClose.addEventListener("click", () => { void closeStatsDrawer(); });
-el.drawerDragHandle.addEventListener("click", () => { void closeStatsDrawer(); });
+let suppressNextDrawerHandleClick = false;
+el.drawerDragHandle.addEventListener("click", () => {
+  if (suppressNextDrawerHandleClick) {
+    suppressNextDrawerHandleClick = false;
+    return;
+  }
+  void closeStatsDrawer();
+});
 el.drawerDragHandle.addEventListener("keydown", (event: KeyboardEvent) => {
   if (event.key === "ArrowDown") {
     event.preventDefault();
@@ -875,11 +882,17 @@ el.drawerDragHandle.addEventListener("pointerup", (event: PointerEvent) => {
   if (!drawerPointer || drawerPointer.id !== event.pointerId) return;
   const distance = event.clientY - drawerPointer.startY;
   const elapsed = Math.max(1, performance.now() - drawerPointer.startedAt);
+  const moved = Math.abs(distance) > 8;
   const shouldClose = distance > 110 || (distance > 32 && distance / elapsed > 0.65);
+  suppressNextDrawerHandleClick = moved;
+  if (moved) window.setTimeout(() => { suppressNextDrawerHandleClick = false; }, 0);
   resetDrawerDrag();
   if (shouldClose) void closeStatsDrawer();
 });
-el.drawerDragHandle.addEventListener("pointercancel", resetDrawerDrag);
+el.drawerDragHandle.addEventListener("pointercancel", () => {
+  suppressNextDrawerHandleClick = false;
+  resetDrawerDrag();
+});
 el.drawerDragHandle.addEventListener("lostpointercapture", () => {
   if (drawerPointer) resetDrawerDrag();
 });
