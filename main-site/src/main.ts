@@ -1,181 +1,584 @@
 import "./styles.css";
-
 import { registerSW } from "virtual:pwa-register";
+import { createTripMap, type Coordinate, type RoutePoint } from "./map/trip-map";
 import {
-  formatFileSize,
-  getStoredOfflineMap,
-  removeStoredOfflineMap,
-  saveOfflineMap
-} from "./storage/map-store";
-import {
-  inspectOfflineMap,
-  mountOfflineMap,
-  type OfflineMapHandle,
-  type SelectedCoordinate
-} from "./map/offline-map";
+  DEFAULT_APP_DATA,
+  loadAppData,
+  saveAppData,
+  type ActiveTrip,
+  type AppData,
+  type SavedTrip
+} from "./storage/trip-store";
 
-const importButton = document.querySelector<HTMLButtonElement>("#import-map-button")!;
-const emptyImportButton = document.querySelector<HTMLButtonElement>("#empty-import-button")!;
-const fileInput = document.querySelector<HTMLInputElement>("#map-file-input")!;
-const removeButton = document.querySelector<HTMLButtonElement>("#remove-map-button")!;
-const mapContainer = document.querySelector<HTMLDivElement>("#map")!;
-const mapEmpty = document.querySelector<HTMLDivElement>("#map-empty")!;
-const mapLoading = document.querySelector<HTMLDivElement>("#map-loading")!;
-const mapName = document.querySelector<HTMLElement>("#map-file-name")!;
-const mapMeta = document.querySelector<HTMLElement>("#map-file-meta")!;
-const mapFeedback = document.querySelector<HTMLDivElement>("#map-feedback")!;
-const coordinateValue = document.querySelector<HTMLElement>("#coordinate-value")!;
-const updateBanner = document.querySelector<HTMLDivElement>("#update-banner")!;
-const updateButton = document.querySelector<HTMLButtonElement>("#update-button")!;
+const $ = <T extends HTMLElement>(selector: string): T => {
+  const element = document.querySelector<T>(selector);
+  if (!element) throw new Error(`Elemen wajib tidak ditemukan: ${selector}`);
+  return element;
+};
 
-// These elements are required by the page markup. Fail fast if markup changes.
+const el = {
+  map: $("#map"),
+  mapState: $("#map-state-label"),
+  mapHint: $("#map-hint"),
+  selectedLabel: $("#selected-label"),
+  selectedCoordinate: $("#selected-coordinate"),
+  clearSelection: $("#clear-selection"),
+  start: $("#start-button"),
+  rest: $("#rest-button"),
+  resume: $("#resume-button"),
+  finish: $("#finish-button"),
+  finishPaused: $("#finish-paused-button"),
+  activeActions: $("#active-actions"),
+  pausedActions: $("#paused-actions"),
+  status: $("#session-status"),
+  help: $("#session-help"),
+  distance: $("#live-distance"),
+  duration: $("#live-duration"),
+  checkpoints: $("#live-checkpoints"),
+  speed: $("#live-speed"),
+  levelNumber: $("#level-number"),
+  levelName: $("#level-name"),
+  xpLabel: $("#xp-label"),
+  xpProgress: $("#xp-progress"),
+  xpNext: $("#xp-next"),
+  streak: $("#streak-count"),
+  badgeCount: $("#badge-count"),
+  badgeGrid: $("#badge-grid"),
+  tripCount: $("#trip-count"),
+  history: $("#history-list"),
+  result: $("#result-section"),
+  resultSubtitle: $("#result-subtitle"),
+  resultDistance: $("#result-distance"),
+  resultXp: $("#result-xp"),
+  resultTotal: $("#result-total-time"),
+  resultActive: $("#result-active-time"),
+  resultRest: $("#result-rest-time"),
+  resultPace: $("#result-pace"),
+  resultSpeed: $("#result-speed"),
+  resultStops: $("#result-stops"),
+  earnedBadges: $("#earned-badges"),
+  closeResult: $("#close-result"),
+  export: $("#export-button"),
+  toast: $("#toast"),
+  updateBanner: $("#update-banner"),
+  update: $("#update-button")
+};
 
-let mapHandle: OfflineMapHandle | undefined;
+type Phase = "idle" | "active" | "paused";
+let appData: AppData = { ...DEFAULT_APP_DATA };
+let currentTrip: ActiveTrip | null = null;
+let phase: Phase = "idle";
+let selectedPoint: Coordinate | null = null;
+let busy = false;
+let toastTimeout: ReturnType<typeof setTimeout> | undefined;
 
-function setFeedback(message: string, isError = false): void {
-  mapFeedback.textContent = message;
-  mapFeedback.classList.toggle("is-error", isError);
+const BADGES = [
+  { id: "first-trip", title: "Langkah Pertama", description: "Selesaikan perjalanan pertamamu.", reward: 30, requirement: "1 perjalanan" },
+  { id: "first-km", title: "Satu Kilometer", description: "Kumpulkan total jarak 1 km.", reward: 25, requirement: "Total 1 km" },
+  { id: "five-km", title: "Penjelajah", description: "Kumpulkan total jarak 5 km.", reward: 40, requirement: "Total 5 km" },
+  { id: "five-trips", title: "Mulai Konsisten", description: "Selesaikan lima perjalanan.", reward: 50, requirement: "5 perjalanan" },
+  { id: "ten-km", title: "Sepuluh Kilometer", description: "Kumpulkan total jarak 10 km.", reward: 75, requirement: "Total 10 km" },
+  { id: "three-days", title: "Jaga Ritme", description: "Berjalan selama tiga hari berbeda secara beruntun.", reward: 40, requirement: "Streak 3 hari" }
+] as const;
+
+const map = createTripMap(
+  el.map,
+  (coordinate) => {
+    selectedPoint = coordinate;
+    el.selectedLabel.textContent = "Titik manual dipilih";
+    el.selectedCoordinate.textContent = `${coordinate.latitude.toFixed(5)}, ${coordinate.longitude.toFixed(5)}`;
+    el.mapHint.hidden = true;
+  },
+  () => {
+    el.mapState.textContent = "Peta siap";
+    if (currentTrip?.points.length) map.setRoute(currentTrip.points);
+  },
+  (message) => {
+    el.mapState.textContent = "Peta tidak lengkap";
+    console.warn("Joging map:", message);
+  }
+);
+
+function notify(message: string, isError = false): void {
+  el.toast.textContent = message;
+  el.toast.classList.toggle("is-error", isError);
+  el.toast.hidden = false;
+  if (toastTimeout) clearTimeout(toastTimeout);
+  toastTimeout = setTimeout(() => { el.toast.hidden = true; }, 3600);
 }
 
-function updateCoordinate(coordinate: SelectedCoordinate): void {
-  const latitude = coordinate.latitude.toFixed(6);
-  const longitude = coordinate.longitude.toFixed(6);
-  coordinateValue.textContent = `${latitude}, ${longitude}`;
+function formatDuration(milliseconds: number): string {
+  const totalSeconds = Math.max(0, Math.floor(milliseconds / 1000));
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  return [hours, minutes, seconds].map((value) => String(value).padStart(2, "0")).join(":");
 }
 
-function setMapDetails(name: string, size: number, importedAt?: number): void {
-  mapName.textContent = name;
-  const importedLabel = importedAt
-    ? new Intl.DateTimeFormat("id-ID", {
-        day: "numeric",
-        month: "short",
-        year: "numeric"
-      }).format(importedAt)
-    : "Baru saja";
-
-  mapMeta.textContent = `${formatFileSize(size)} · Disimpan di perangkat · ${importedLabel}`;
-  removeButton.disabled = false;
-  document.querySelector("#file-status-dot")?.classList.add("is-ready");
+function formatCompactDuration(milliseconds: number): string {
+  const totalMinutes = Math.floor(Math.max(0, milliseconds) / 60000);
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  return hours > 0 ? `${hours}j ${minutes}m` : `${minutes}m`;
 }
 
-function resetMapDetails(): void {
-  mapName.textContent = "Belum ada peta tersimpan";
-  mapMeta.textContent = "Peta akan disimpan di perangkat ini.";
-  removeButton.disabled = true;
-  document.querySelector("#file-status-dot")?.classList.remove("is-ready");
-  coordinateValue.textContent = "Belum ada titik dipilih";
+function formatPace(secondsPerKm: number | null): string {
+  if (secondsPerKm === null || !Number.isFinite(secondsPerKm) || secondsPerKm <= 0) return "-";
+  const seconds = Math.round(secondsPerKm);
+  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")} /km`;
 }
 
-async function activateMap(
-  file: File,
-  options: { persist: boolean; importedAt?: number }
-): Promise<void> {
-  mapLoading.hidden = false;
-  mapEmpty.hidden = true;
-  importButton.disabled = true;
-  setFeedback("Memeriksa arsip peta lokal...");
+function calculateDistance(points: RoutePoint[]): number {
+  if (points.length < 2) return 0;
+  const radius = 6371000;
+  let total = 0;
 
-  mapHandle?.destroy();
-  mapHandle = undefined;
+  for (let index = 1; index < points.length; index += 1) {
+    const previous = points[index - 1];
+    const current = points[index];
+    const lat1 = previous.latitude * Math.PI / 180;
+    const lat2 = current.latitude * Math.PI / 180;
+    const deltaLat = (current.latitude - previous.latitude) * Math.PI / 180;
+    const deltaLon = (current.longitude - previous.longitude) * Math.PI / 180;
+    const a = Math.sin(deltaLat / 2) ** 2
+      + Math.cos(lat1) * Math.cos(lat2) * Math.sin(deltaLon / 2) ** 2;
+    total += radius * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  }
 
-  try {
-    await inspectOfflineMap(file);
+  return total;
+}
 
-    if (options.persist) {
-      await saveOfflineMap(file);
-      try {
-        await navigator.storage?.persist?.();
-      } catch {
-        // Persistence is best-effort. IndexedDB remains local even if the browser declines it.
-      }
+function getActiveTime(now = Date.now()): number {
+  if (!currentTrip) return 0;
+  return currentTrip.activeMs + (phase === "active" ? Math.max(0, now - currentTrip.lastResumedAt) : 0);
+}
+
+function getTotalTime(now = Date.now()): number {
+  return currentTrip ? Math.max(0, now - currentTrip.startedAt) : 0;
+}
+
+function updateLiveStats(): void {
+  const points = currentTrip?.points ?? [];
+  const distance = calculateDistance(points);
+  const activeMs = getActiveTime();
+  const totalMs = getTotalTime();
+  const km = distance / 1000;
+  const speed = activeMs > 0 ? km / (activeMs / 3600000) : 0;
+
+  el.distance.innerHTML = `${km.toFixed(2)} <small>km</small>`;
+  el.duration.textContent = currentTrip ? formatDuration(totalMs) : "00:00:00";
+  el.checkpoints.textContent = String(points.length);
+  el.speed.innerHTML = speed > 0 ? `${speed.toFixed(1)} <small>km/j</small>` : '- <small>km/j</small>';
+}
+
+function setPhase(nextPhase: Phase): void {
+  phase = nextPhase;
+  el.start.hidden = nextPhase !== "idle";
+  el.activeActions.hidden = nextPhase !== "active";
+  el.pausedActions.hidden = nextPhase !== "paused";
+
+  const labels: Record<Phase, string> = {
+    idle: "Belum dimulai",
+    active: "Sedang berjalan",
+    paused: "Sedang istirahat"
+  };
+  el.status.innerHTML = `<span></span>${labels[nextPhase]}`;
+  el.status.className = `session-status is-${nextPhase}`;
+
+  if (nextPhase === "idle") {
+    el.help.textContent = "Tekan mulai untuk mengambil satu titik GPS dan memulai timer. Kamu juga bisa memilih titik di peta jika GPS tidak tersedia.";
+  } else if (nextPhase === "active") {
+    el.help.textContent = "Perjalanan aktif. Tekan Istirahat untuk menyimpan checkpoint dan menjeda timer, atau Selesai untuk mengakhiri.";
+  } else {
+    el.help.textContent = "Timer aktif dijeda. Tekan Lanjutkan saat siap bergerak lagi.";
+  }
+
+  updateLiveStats();
+}
+
+function getOneShotPosition(): Promise<GeolocationPosition> {
+  return new Promise((resolve, reject) => {
+    if (!("geolocation" in navigator)) {
+      reject(new Error("Browser ini tidak menyediakan GPS. Pilih titik manual di peta."));
+      return;
     }
 
-    mapHandle = await mountOfflineMap(mapContainer, file, {
-      onCoordinateChange: updateCoordinate,
-      onMapReady: () => setFeedback("Peta siap. Ketuk lokasi untuk menaruh pin, lalu geser pin untuk mengaturnya."),
-      onMapError: (message) => setFeedback(message, true)
+    navigator.geolocation.getCurrentPosition(resolve, (error) => {
+      const messages: Record<number, string> = {
+        1: "Izin lokasi ditolak.",
+        2: "Lokasi belum dapat ditemukan.",
+        3: "GPS terlalu lama merespons."
+      };
+      reject(new Error(messages[error.code] ?? "Lokasi tidak dapat dibaca."));
+    }, {
+      enableHighAccuracy: true,
+      maximumAge: 0,
+      timeout: 15000
     });
+  });
+}
 
-    mapEmpty.hidden = true;
-    setMapDetails(file.name, file.size, options.importedAt);
-    setFeedback("Peta dibuka dari penyimpanan lokal. Tidak ada tile yang diminta dari internet.");
+async function capturePoint(label: RoutePoint["label"]): Promise<RoutePoint> {
+  try {
+    const position = await getOneShotPosition();
+    const point: RoutePoint = {
+      latitude: position.coords.latitude,
+      longitude: position.coords.longitude,
+      at: position.timestamp || Date.now(),
+      label,
+      source: "gps"
+    };
+    selectedPoint = point;
+    el.selectedLabel.textContent = "Lokasi GPS terakhir";
+    el.selectedCoordinate.textContent = `${point.latitude.toFixed(5)}, ${point.longitude.toFixed(5)}${Number.isFinite(position.coords.accuracy) ? ` · akurasi ±${Math.round(position.coords.accuracy)} m` : ""}`;
+    el.mapHint.hidden = true;
+    map.setSelected(point);
+    map.flyTo(point);
+    return point;
   } catch (error) {
-    mapEmpty.hidden = false;
-    setFeedback(
-      error instanceof Error ? error.message : "Peta tidak dapat dibuka.",
-      true
-    );
-    throw error;
+    if (selectedPoint) {
+      notify("GPS tidak tersedia. Menggunakan titik manual yang kamu pilih.", true);
+      return {
+        ...selectedPoint,
+        at: Date.now(),
+        label,
+        source: "manual"
+      };
+    }
+    throw error instanceof Error ? error : new Error("Tidak dapat mengambil lokasi.");
+  }
+}
+
+function addPoint(point: RoutePoint): void {
+  if (!currentTrip) return;
+  const previous = currentTrip.points[currentTrip.points.length - 1];
+  const separation = previous
+    ? calculateDistance([previous, point])
+    : 0;
+
+  // Very small GPS jitter is not useful as a route segment.
+  if (previous && separation < 3) {
+    currentTrip.points[currentTrip.points.length - 1] = point;
+  } else {
+    currentTrip.points.push(point);
+  }
+
+  map.setRoute(currentTrip.points);
+}
+
+async function persist(): Promise<void> {
+  appData.activeTrip = currentTrip;
+  await saveAppData(appData);
+}
+
+async function startJourney(): Promise<void> {
+  if (phase !== "idle") return;
+  const point = await capturePoint("Mulai");
+  const now = Date.now();
+  currentTrip = {
+    id: crypto.randomUUID(),
+    startedAt: now,
+    lastResumedAt: now,
+    activeMs: 0,
+    points: [point]
+  };
+  await persist();
+  map.setRoute(currentTrip.points);
+  setPhase("active");
+  notify(point.source === "gps" ? "Perjalanan dimulai. GPS sudah berhenti mengambil lokasi." : "Perjalanan dimulai dari titik manual.");
+}
+
+async function pauseJourney(): Promise<void> {
+  if (!currentTrip || phase !== "active") return;
+  const point = await capturePoint("Istirahat");
+  const now = Date.now();
+  currentTrip.activeMs += Math.max(0, now - currentTrip.lastResumedAt);
+  currentTrip.pausedAt = now;
+  addPoint(point);
+  await persist();
+  setPhase("paused");
+  notify("Checkpoint istirahat disimpan. Timer aktif dijeda.");
+}
+
+async function resumeJourney(): Promise<void> {
+  if (!currentTrip || phase !== "paused") return;
+  const point = await capturePoint("Lanjut");
+  const now = Date.now();
+  addPoint(point);
+  currentTrip.lastResumedAt = now;
+  delete currentTrip.pausedAt;
+  await persist();
+  setPhase("active");
+  notify("Perjalanan dilanjutkan.");
+}
+
+function localDayKey(timestamp: number): string {
+  const date = new Date(timestamp);
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+function calculateStreak(trips: SavedTrip[]): number {
+  const days = new Set(trips.map((trip) => localDayKey(trip.startedAt)));
+  if (days.size === 0) return 0;
+
+  const cursor = new Date();
+  if (!days.has(localDayKey(cursor.getTime()))) cursor.setDate(cursor.getDate() - 1);
+
+  let streak = 0;
+  while (days.has(localDayKey(cursor.getTime()))) {
+    streak += 1;
+    cursor.setDate(cursor.getDate() - 1);
+  }
+  return streak;
+}
+
+function getBadgeUnlocks(trips: SavedTrip[], existing: string[]): typeof BADGES[number][] {
+  const totalDistanceKm = trips.reduce((sum, trip) => sum + trip.distanceMeters, 0) / 1000;
+  const streak = calculateStreak(trips);
+  const earned = new Set(existing);
+
+  return BADGES.filter((badge) => {
+    if (earned.has(badge.id)) return false;
+    switch (badge.id) {
+      case "first-trip": return trips.length >= 1;
+      case "first-km": return totalDistanceKm >= 1;
+      case "five-km": return totalDistanceKm >= 5;
+      case "five-trips": return trips.length >= 5;
+      case "ten-km": return totalDistanceKm >= 10;
+      case "three-days": return streak >= 3;
+      default: return false;
+    }
+  });
+}
+
+function completeTrip(point?: RoutePoint): void {
+  if (!currentTrip) return;
+  const now = Date.now();
+  if (point) addPoint(point);
+
+  const activeMs = getActiveTime(now);
+  const durationMs = Math.max(0, now - currentTrip.startedAt);
+  const distanceMeters = calculateDistance(currentTrip.points);
+  const distanceKm = distanceMeters / 1000;
+  const averageSpeedKmh = activeMs > 0 ? distanceKm / (activeMs / 3600000) : 0;
+  const averagePaceSecondsPerKm = distanceKm >= 0.03 && activeMs > 0
+    ? activeMs / 1000 / distanceKm
+    : null;
+
+  const baseXp = 20 + Math.round(distanceKm * 18) + Math.floor(activeMs / 300000) * 2;
+  const trip: SavedTrip = {
+    id: currentTrip.id,
+    startedAt: currentTrip.startedAt,
+    endedAt: now,
+    durationMs,
+    activeMs,
+    restMs: Math.max(0, durationMs - activeMs),
+    distanceMeters,
+    averageSpeedKmh,
+    averagePaceSecondsPerKm,
+    checkpointCount: currentTrip.points.length,
+    points: [...currentTrip.points],
+    xpEarned: baseXp
+  };
+
+  const nextTrips = [trip, ...appData.trips];
+  const newBadges = getBadgeUnlocks(nextTrips, appData.unlockedBadges);
+  const badgeXp = newBadges.reduce((sum, badge) => sum + badge.reward, 0);
+  trip.xpEarned += badgeXp;
+
+  appData = {
+    ...appData,
+    trips: nextTrips,
+    xp: appData.xp + trip.xpEarned,
+    unlockedBadges: [...appData.unlockedBadges, ...newBadges.map((badge) => badge.id)],
+    activeTrip: null
+  };
+  currentTrip = null;
+  setPhase("idle");
+  map.setRoute(trip.points);
+  void saveAppData(appData).catch(() => notify("Perjalanan selesai, tetapi penyimpanan browser gagal.", true));
+  renderAll();
+  showResult(trip, newBadges);
+}
+
+async function finishJourney(): Promise<void> {
+  if (!currentTrip || phase === "idle") return;
+  let point: RoutePoint | undefined;
+  try {
+    point = await capturePoint("Selesai");
+  } catch (error) {
+    if (currentTrip.points.length === 0) throw error;
+    notify("Lokasi akhir tidak didapat. Perjalanan diselesaikan pada checkpoint terakhir.", true);
+  }
+
+  if (phase === "active") {
+    currentTrip.activeMs += Math.max(0, Date.now() - currentTrip.lastResumedAt);
+  }
+  completeTrip(point);
+}
+
+async function runAction(action: () => Promise<void>): Promise<void> {
+  if (busy) return;
+  busy = true;
+  [el.start, el.rest, el.resume, el.finish, el.finishPaused].forEach((button) => {
+    (button as HTMLButtonElement).disabled = true;
+  });
+  try {
+    await action();
+  } catch (error) {
+    notify(error instanceof Error ? error.message : "Aksi gagal dilakukan.", true);
   } finally {
-    mapLoading.hidden = true;
-    importButton.disabled = false;
-  }
-}
-
-async function importSelectedMap(file: File): Promise<void> {
-  try {
-    await activateMap(file, { persist: true });
-  } catch {
-    // The visible status message already explains why the import failed.
-  }
-}
-
-async function restoreSavedMap(): Promise<void> {
-  try {
-    const storedMap = await getStoredOfflineMap();
-    if (!storedMap) return;
-
-    const file = new File([storedMap.blob], storedMap.name, {
-      type: "application/vnd.pmtiles",
-      lastModified: storedMap.importedAt
+    busy = false;
+    [el.start, el.rest, el.resume, el.finish, el.finishPaused].forEach((button) => {
+      (button as HTMLButtonElement).disabled = false;
     });
-
-    await activateMap(file, {
-      persist: false,
-      importedAt: storedMap.importedAt
-    });
-  } catch {
-    mapEmpty.hidden = false;
-    resetMapDetails();
+    setPhase(phase);
   }
 }
 
-async function removeMap(): Promise<void> {
-  mapHandle?.destroy();
-  mapHandle = undefined;
-  await removeStoredOfflineMap();
-  mapContainer.replaceChildren();
-  mapEmpty.hidden = false;
-  resetMapDetails();
-  setFeedback("Arsip peta lokal telah dihapus dari penyimpanan browser.");
+function showResult(trip: SavedTrip, unlocked: typeof BADGES[number][]): void {
+  const km = trip.distanceMeters / 1000;
+  el.resultSubtitle.textContent = new Intl.DateTimeFormat("id-ID", {
+    dateStyle: "full",
+    timeStyle: "short"
+  }).format(trip.endedAt);
+  el.resultDistance.textContent = `${km.toFixed(2)} km`;
+  el.resultXp.textContent = `+${trip.xpEarned} XP`;
+  el.resultTotal.textContent = formatCompactDuration(trip.durationMs);
+  el.resultActive.textContent = formatCompactDuration(trip.activeMs);
+  el.resultRest.textContent = formatCompactDuration(trip.restMs);
+  el.resultPace.textContent = formatPace(trip.averagePaceSecondsPerKm);
+  el.resultSpeed.textContent = `${trip.averageSpeedKmh.toFixed(1)} km/j`;
+  el.resultStops.textContent = String(trip.checkpointCount);
+
+  el.earnedBadges.replaceChildren();
+  if (unlocked.length > 0) {
+    const title = document.createElement("strong");
+    title.textContent = "Lencana baru terbuka";
+    const list = document.createElement("div");
+    list.className = "earned-badge-list";
+    for (const badge of unlocked) {
+      const item = document.createElement("span");
+      item.className = "earned-badge";
+      item.textContent = `${badge.title} · +${badge.reward} XP`;
+      list.append(item);
+    }
+    el.earnedBadges.append(title, list);
+    el.earnedBadges.hidden = false;
+  } else {
+    el.earnedBadges.hidden = true;
+  }
+
+  el.result.hidden = false;
+  el.result.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
-const openFilePicker = (): void => fileInput.click();
+function renderProgress(): void {
+  const level = Math.floor(appData.xp / 100) + 1;
+  const currentLevelXp = appData.xp % 100;
+  const names = ["Pemula", "Penjelajah", "Pengelana", "Petualang", "Penakluk Jalur", "Legenda"];
+  const title = names[Math.min(level - 1, names.length - 1)] ?? "Legenda";
+  el.levelNumber.textContent = String(level);
+  el.levelName.textContent = `Level ${level} · ${title}`;
+  el.xpLabel.textContent = `${currentLevelXp} / 100 XP`;
+  (el.xpProgress as HTMLElement).style.width = `${currentLevelXp}%`;
+  el.xpNext.textContent = `${100 - currentLevelXp} XP menuju level berikutnya`;
+  el.streak.textContent = String(calculateStreak(appData.trips));
+}
 
-importButton.addEventListener("click", openFilePicker);
-emptyImportButton.addEventListener("click", openFilePicker);
+function renderBadges(): void {
+  const unlocked = new Set(appData.unlockedBadges);
+  el.badgeCount.textContent = `${unlocked.size} / ${BADGES.length}`;
+  el.badgeGrid.innerHTML = BADGES.map((badge) => {
+    const isUnlocked = unlocked.has(badge.id);
+    return `<article class="badge-item ${isUnlocked ? "is-unlocked" : "is-locked"}">
+      <span class="badge-symbol" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="m12 2.8 2.6 5.3 5.8.8-4.2 4.1 1 5.8-5.2-2.8-5.2 2.8 1-5.8L3.6 8.9l5.8-.8L12 2.8Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg></span>
+      <span class="badge-copy"><strong>${badge.title}</strong><small>${isUnlocked ? `Terbuka · +${badge.reward} XP` : badge.requirement}</small></span>
+    </article>`;
+  }).join("");
+}
 
-fileInput.addEventListener("change", () => {
-  const file = fileInput.files?.[0];
-  fileInput.value = "";
-  if (file) void importSelectedMap(file);
+function renderHistory(): void {
+  el.tripCount.textContent = `${appData.trips.length} perjalanan`;
+  if (appData.trips.length === 0) {
+    el.history.innerHTML = `<div class="empty-history"><span class="empty-history-icon"><svg viewBox="0 0 24 24" fill="none"><path d="M4 6.5h16M6 3v3.5M18 3v3.5M5 10h14v10H5V10Z" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="m9 15 2 2 4-4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></span><strong>Belum ada perjalanan</strong><span>Perjalanan pertamamu akan muncul di sini.</span></div>`;
+    return;
+  }
+
+  el.history.innerHTML = appData.trips.slice(0, 8).map((trip) => {
+    const date = new Intl.DateTimeFormat("id-ID", { day: "numeric", month: "short", year: "numeric" }).format(trip.startedAt);
+    return `<article class="history-item">
+      <span class="history-mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M5 18 10 7l3 6 2-4 4 9H5Z" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+      <div class="history-main"><strong>${(trip.distanceMeters / 1000).toFixed(2)} km</strong><span>${date} · ${formatCompactDuration(trip.durationMs)} · ${trip.checkpointCount} checkpoint</span></div>
+      <span class="history-xp">+${trip.xpEarned} XP</span>
+    </article>`;
+  }).join("");
+}
+
+function renderAll(): void {
+  renderProgress();
+  renderBadges();
+  renderHistory();
+  updateLiveStats();
+}
+
+function exportHistory(): void {
+  const backup = {
+    application: "Joging",
+    formatVersion: 1,
+    exportedAt: new Date().toISOString(),
+    note: "Data perjalanan dan checkpoint disimpan secara lokal.",
+    trips: appData.trips,
+    xp: appData.xp,
+    unlockedBadges: appData.unlockedBadges
+  };
+  const blob = new Blob([JSON.stringify(backup, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = `joging-backup-${localDayKey(Date.now())}.json`;
+  anchor.click();
+  URL.revokeObjectURL(url);
+  notify("Cadangan riwayat berhasil dibuat.");
+}
+
+async function initialize(): Promise<void> {
+  try {
+    appData = await loadAppData();
+    currentTrip = appData.activeTrip;
+    if (currentTrip) {
+      phase = currentTrip.pausedAt ? "paused" : "active";
+      map.setRoute(currentTrip.points);
+      const last = currentTrip.points[currentTrip.points.length - 1];
+      if (last) map.flyTo(last, 15);
+      notify("Perjalanan sebelumnya dipulihkan dari penyimpanan lokal.");
+    }
+    setPhase(phase);
+    renderAll();
+  } catch {
+    notify("Penyimpanan lokal tidak dapat dibaca. Riwayat mungkin tidak tersedia.", true);
+  }
+}
+
+el.start.addEventListener("click", () => void runAction(startJourney));
+el.rest.addEventListener("click", () => void runAction(pauseJourney));
+el.resume.addEventListener("click", () => void runAction(resumeJourney));
+el.finish.addEventListener("click", () => void runAction(finishJourney));
+el.finishPaused.addEventListener("click", () => void runAction(finishJourney));
+el.clearSelection.addEventListener("click", () => {
+  selectedPoint = null;
+  map.setSelected(null);
+  el.selectedLabel.textContent = "Belum ada titik manual";
+  el.selectedCoordinate.textContent = "GPS akan digunakan saat kamu memulai";
 });
-
-removeButton.addEventListener("click", () => {
-  void removeMap().catch(() => setFeedback("Peta gagal dihapus dari penyimpanan.", true));
-});
+el.closeResult.addEventListener("click", () => { el.result.hidden = true; });
+el.export.addEventListener("click", exportHistory);
 
 const updateSW = registerSW({
-  onNeedRefresh() {
-    updateBanner.hidden = false;
-  },
-  onOfflineReady() {
-    setFeedback("Aplikasi siap dibuka kembali tanpa koneksi internet.");
-  }
+  onNeedRefresh() { el.updateBanner.hidden = false; },
+  onOfflineReady() { notify("Aplikasi siap dibuka offline. Peta dasar tetap memerlukan internet."); }
 });
+el.update.addEventListener("click", () => { void updateSW(true); });
 
-updateButton.addEventListener("click", () => {
-  void updateSW(true);
-});
-
-void restoreSavedMap();
+void initialize();
+window.setInterval(updateLiveStats, 1000);
