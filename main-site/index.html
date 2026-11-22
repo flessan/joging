@@ -111,10 +111,10 @@
           </button>
         </section>
 
-        <dialog class="details-drawer" id="details-drawer" aria-labelledby="drawer-title" aria-describedby="drawer-description">
+        <dialog class="details-drawer" id="details-drawer" closedby="any" aria-labelledby="drawer-title" aria-describedby="drawer-description">
           <div class="drawer-topbar">
-            <div class="drawer-drag-handle" id="drawer-drag-handle" aria-hidden="true"><span></span></div>
-            <button class="icon-button drawer-close-button" id="close-details-drawer" type="button" aria-label="Tutup statistik">
+            <button class="drawer-drag-handle" id="drawer-drag-handle" type="button" aria-label="Tutup panel statistik. Geser ke bawah atau tekan Enter untuk menutup."><span aria-hidden="true"></span></button>
+            <button class="icon-button drawer-close-button" id="close-details-drawer" type="button" aria-label="Tutup statistik" autofocus>
               <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
             </button>
           </div>
