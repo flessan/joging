@@ -105,12 +105,26 @@
           </div>
           <p class="session-help" id="session-help">Mulai untuk merekam jejak GPS. Kamu juga bisa mengetuk peta untuk menambah titik manual.</p>
 
-          <details class="details-drawer" id="details-drawer">
-            <summary>
-              <span>Statistik & pencapaian</span>
-              <span class="drawer-summary-meta"><span id="level-name">Level 1 · Pemula</span><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m6 9 6 6 6-6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
-            </summary>
-            <div class="drawer-content">
+                    <button class="drawer-trigger" id="open-details-drawer" type="button" aria-haspopup="dialog" aria-controls="details-drawer" aria-expanded="false">
+            <span>Statistik & pencapaian</span>
+            <span class="drawer-summary-meta"><span id="level-name">Level 1 · Pemula</span><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m6 9 6 6 6-6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+          </button>
+        </section>
+
+        <dialog class="details-drawer" id="details-drawer" aria-labelledby="drawer-title" aria-describedby="drawer-description">
+          <div class="drawer-topbar">
+            <div class="drawer-drag-handle" id="drawer-drag-handle" aria-hidden="true"><span></span></div>
+            <button class="icon-button drawer-close-button" id="close-details-drawer" type="button" aria-label="Tutup statistik">
+              <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+            </button>
+          </div>
+          <header class="drawer-heading">
+            <p class="eyebrow">PROGRES PERJALANAN</p>
+            <h2 id="drawer-title">Statistik & pencapaian</h2>
+            <p id="drawer-description">Lihat progres, lencana, dan riwayat perjalanan yang tersimpan di perangkat ini.</p>
+          </header>
+          <div class="drawer-content" id="drawer-content">
+
               <section class="progress-card" aria-label="Progres petualangan">
                 <div class="level-emblem" aria-hidden="true"><span id="level-number">1</span></div>
                 <div class="level-copy">
@@ -153,9 +167,9 @@
                 <strong>Privasi</strong>
                 <p>Jejak GPS hanya aktif selama perjalanan berjalan dan halaman terlihat. Riwayat tersimpan lokal. Peta menggunakan tile OpenStreetMap melalui internet.</p>
               </section>
-            </div>
-          </details>
-        </section>
+            
+          </div>
+        </dialog>
       </main>
 
       <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
