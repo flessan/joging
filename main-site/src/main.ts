@@ -149,6 +149,7 @@ async function mountTripMap(): Promise<void> {
       const lastPoint = currentTrip.points[currentTrip.points.length - 1];
       if (lastPoint) mapHandle.flyTo(lastPoint, 15);
     }
+    if (selectedPoint) mapHandle.setSelected(selectedPoint);
   } catch (error) {
     el.mapState.textContent = "Peta gagal dimuat";
     console.warn("Joging map initialization failed:", error);
@@ -674,7 +675,7 @@ async function finishJourney(): Promise<void> {
 async function runAction(action: () => Promise<void>): Promise<void> {
   if (busy) return;
   busy = true;
-  [el.start, el.rest, el.resume, el.finish, el.finishPaused, el.refreshLocation].forEach((button) => {
+  [el.start, el.rest, el.resume, el.finish, el.finishPaused].forEach((button) => {
     (button as HTMLButtonElement).disabled = true;
   });
   try {
@@ -683,7 +684,7 @@ async function runAction(action: () => Promise<void>): Promise<void> {
     notify(error instanceof Error ? error.message : "Aksi gagal dilakukan.", true);
   } finally {
     busy = false;
-    [el.start, el.rest, el.resume, el.finish, el.finishPaused, el.refreshLocation].forEach((button) => {
+    [el.start, el.rest, el.resume, el.finish, el.finishPaused].forEach((button) => {
       (button as HTMLButtonElement).disabled = false;
     });
     setPhase(phase);
@@ -826,7 +827,13 @@ el.rest.addEventListener("click", () => void runAction(pauseJourney));
 el.resume.addEventListener("click", () => void runAction(resumeJourney));
 el.finish.addEventListener("click", () => void runAction(finishJourney));
 el.finishPaused.addEventListener("click", () => void runAction(finishJourney));
-el.refreshLocation.addEventListener("click", () => void runAction(refreshCurrentLocation));
+el.refreshLocation.addEventListener("click", () => {
+  if (el.refreshLocation.disabled) return;
+  el.refreshLocation.disabled = true;
+  void refreshCurrentLocation()
+    .catch((error: unknown) => notify(error instanceof Error ? error.message : "Lokasi tidak dapat diperbarui.", true))
+    .finally(() => { el.refreshLocation.disabled = false; });
+});
 el.followToggle.addEventListener("click", () => {
   const enabled = el.followToggle.getAttribute("aria-pressed") !== "true";
   mapHandle?.setFollow(enabled);
