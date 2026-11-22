@@ -2,6 +2,8 @@ import { defineConfig } from "vite";
 import { VitePWA } from "vite-plugin-pwa";
 
 export default defineConfig({
+  // Relative URLs keep assets working when Pages serves the app from a subpath.
+  base: "./",
   root: "main-site",
   publicDir: "public",
   plugins: [
@@ -13,13 +15,15 @@ export default defineConfig({
         name: "Joging - Private Route Tracker",
         short_name: "Joging",
         description: "Pelacak perjalanan pribadi yang dirancang untuk berjalan offline.",
+        start_url: "./",
+        scope: "./",
         theme_color: "#e9f1f5",
         background_color: "#f4f7f8",
         display: "standalone",
         orientation: "portrait",
         icons: [
           {
-            src: "/icons/app-icon.svg",
+            src: "icons/app-icon.svg",
             sizes: "any",
             type: "image/svg+xml",
             purpose: "any maskable"
@@ -28,7 +32,7 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ["**/*.{html,js,mjs,css,svg,png,ico,webmanifest}"],
-        navigateFallback: "/index.html",
+        navigateFallback: "index.html",
         cleanupOutdatedCaches: true
       }
     })
