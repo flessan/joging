@@ -166,7 +166,7 @@ export function createTripMap(
     });
   };
 
-  map.on("load", () => {
+  map.on("style.load", () => {
     map.addSource("journey-route", { type: "geojson", data: routeData(latestRoute) });
     // A bright casing keeps the route readable on both light and dark map tiles.
     map.addLayer({
