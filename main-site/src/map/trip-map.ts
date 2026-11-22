@@ -68,7 +68,7 @@ export function createTripMap(
         id: "openstreetmap-raster",
         type: "raster",
         source: "openstreetmap",
-        paint: { "raster-fade-duration": 180 }
+        paint: { "raster-fade-duration": 0 }
       }
     ]
   };
@@ -89,9 +89,10 @@ export function createTripMap(
 
   let selectedMarker: maplibregl.Marker | undefined;
   let currentLocationMarker: maplibregl.Marker | undefined;
-  let restMarkers: maplibregl.Marker[] = [];
+  let restMarkers = new Map<string, maplibregl.Marker>();
   let latestRoute: RoutePoint[] = [];
   let followLocation = true;
+  let lastFollowAnimationAt = 0;
 
   const routeData = (points: RoutePoint[]): GeoJSON.FeatureCollection<GeoJSON.Geometry> => {
     const features: GeoJSON.Feature<GeoJSON.Geometry>[] = [];
@@ -100,14 +101,18 @@ export function createTripMap(
     if (coordinates.length > 1) {
       features.push({
         type: "Feature",
+        id: "journey-line",
         properties: { kind: "route" },
         geometry: { type: "LineString", coordinates }
       });
     }
 
+    // GPS breadcrumbs are rendered as one line, not as hundreds of individual point features.
     for (const point of points) {
+      if (point.label === "Jejak") continue;
       features.push({
         type: "Feature",
+        id: `checkpoint-${point.at}`,
         properties: { kind: "checkpoint", label: point.label, source: point.source },
         geometry: {
           type: "Point",
@@ -119,28 +124,46 @@ export function createTripMap(
     return { type: "FeatureCollection", features };
   };
 
-  const refreshRestMarkers = (): void => {
-    restMarkers.forEach((marker) => marker.remove());
-    restMarkers = [];
+  const restMarkerKey = (point: RoutePoint): string =>
+    `${point.at}:${point.latitude.toFixed(6)}:${point.longitude.toFixed(6)}`;
 
+  const refreshRestMarkers = (): void => {
     if (!map.isStyleLoaded()) return;
 
-    for (const point of latestRoute) {
-      if (point.label !== "Istirahat") continue;
+    const desired = new Map(
+      latestRoute
+        .filter((point) => point.label === "Istirahat")
+        .map((point) => [restMarkerKey(point), point] as const)
+    );
+
+    for (const [key, marker] of restMarkers) {
+      if (!desired.has(key)) {
+        marker.remove();
+        restMarkers.delete(key);
+      }
+    }
+
+    for (const [key, point] of desired) {
+      if (restMarkers.has(key)) continue;
       const marker = new maplibregl.Marker({
         element: createSleepMarker(),
         anchor: "bottom"
       })
         .setLngLat([point.longitude, point.latitude])
         .addTo(map);
-      restMarkers.push(marker);
+      restMarkers.set(key, marker);
     }
   };
 
+  let routeUpdateFrame = 0;
   const updateRoute = (): void => {
-    const source = map.getSource("journey-route") as maplibregl.GeoJSONSource | undefined;
-    source?.setData(routeData(latestRoute));
-    refreshRestMarkers();
+    if (routeUpdateFrame) cancelAnimationFrame(routeUpdateFrame);
+    routeUpdateFrame = requestAnimationFrame(() => {
+      routeUpdateFrame = 0;
+      const source = map.getSource("journey-route") as maplibregl.GeoJSONSource | undefined;
+      source?.setData(routeData(latestRoute));
+      refreshRestMarkers();
+    });
   };
 
   map.on("load", () => {
@@ -237,7 +260,7 @@ export function createTripMap(
   return {
     map,
     setRoute: (points) => {
-      latestRoute = [...points];
+      latestRoute = points;
       updateRoute();
     },
     setSelected: (coordinate) => {
@@ -265,8 +288,10 @@ export function createTripMap(
         currentLocationMarker.setLngLat(lngLat);
       }
 
-      if (followLocation && map.loaded()) {
-        map.easeTo({ center: lngLat, duration: 450, essential: true });
+      const now = performance.now();
+      if (followLocation && map.loaded() && now - lastFollowAnimationAt > 1100) {
+        lastFollowAnimationAt = now;
+        map.easeTo({ center: lngLat, duration: 250, essential: true });
       }
     },
     setFollow: (enabled) => {
@@ -285,6 +310,8 @@ export function createTripMap(
       selectedMarker?.remove();
       currentLocationMarker?.remove();
       restMarkers.forEach((marker) => marker.remove());
+      restMarkers.clear();
+      if (routeUpdateFrame) cancelAnimationFrame(routeUpdateFrame);
       map.remove();
     }
   };
