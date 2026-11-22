@@ -14,7 +14,7 @@ export interface RoutePoint extends Coordinate {
 
 export interface TripMapHandle {
   map: maplibregl.Map;
-  setRoute: (points: RoutePoint[]) => void;
+  setRoute: (points: RoutePoint[], checkpointsChanged?: boolean) => void;
   setSelected: (coordinate: Coordinate | null) => void;
   setCurrentLocation: (coordinate: Coordinate | null) => void;
   setFollow: (enabled: boolean) => void;
@@ -95,8 +95,8 @@ export function createTripMap(
   let lastFollowAnimationAt = 0;
 
   const routeData = (points: RoutePoint[]): GeoJSON.FeatureCollection<GeoJSON.Geometry> => {
-    const features: GeoJSON.Feature<GeoJSON.Geometry>[] = [];
     const coordinates = points.map((point) => [point.longitude, point.latitude] as [number, number]);
+    const features: GeoJSON.Feature<GeoJSON.Geometry>[] = [];
 
     if (coordinates.length > 1) {
       features.push({
@@ -107,22 +107,23 @@ export function createTripMap(
       });
     }
 
-    // GPS breadcrumbs are rendered as one line, not as hundreds of individual point features.
-    for (const point of points) {
-      if (point.label === "Jejak") continue;
-      features.push({
-        type: "Feature",
+    return { type: "FeatureCollection", features };
+  };
+
+  const checkpointData = (points: RoutePoint[]): GeoJSON.FeatureCollection<GeoJSON.Geometry> => ({
+    type: "FeatureCollection",
+    features: points
+      .filter((point) => point.label !== "Jejak")
+      .map((point) => ({
+        type: "Feature" as const,
         id: `checkpoint-${point.at}`,
         properties: { kind: "checkpoint", label: point.label, source: point.source },
         geometry: {
-          type: "Point",
+          type: "Point" as const,
           coordinates: [point.longitude, point.latitude]
         }
-      });
-    }
-
-    return { type: "FeatureCollection", features };
-  };
+      }))
+  });
 
   const restMarkerKey = (point: RoutePoint): string =>
     `${point.at}:${point.latitude.toFixed(6)}:${point.longitude.toFixed(6)}`;
@@ -156,18 +157,24 @@ export function createTripMap(
   };
 
   let routeUpdateFrame = 0;
+  const updateCheckpoints = (): void => {
+    const source = map.getSource("journey-checkpoints") as maplibregl.GeoJSONSource | undefined;
+    source?.setData(checkpointData(latestRoute));
+    refreshRestMarkers();
+  };
+
   const updateRoute = (): void => {
     if (routeUpdateFrame) cancelAnimationFrame(routeUpdateFrame);
     routeUpdateFrame = requestAnimationFrame(() => {
       routeUpdateFrame = 0;
       const source = map.getSource("journey-route") as maplibregl.GeoJSONSource | undefined;
       source?.setData(routeData(latestRoute));
-      refreshRestMarkers();
     });
   };
 
   map.on("style.load", () => {
     map.addSource("journey-route", { type: "geojson", data: routeData(latestRoute) });
+    map.addSource("journey-checkpoints", { type: "geojson", data: checkpointData(latestRoute) });
     // A bright casing keeps the route readable on both light and dark map tiles.
     map.addLayer({
       id: "journey-line-casing",
@@ -197,7 +204,7 @@ export function createTripMap(
     map.addLayer({
       id: "journey-points-halo",
       type: "circle",
-      source: "journey-route",
+      source: "journey-checkpoints",
       filter: ["==", ["geometry-type"], "Point"],
       paint: {
         "circle-radius": ["interpolate", ["linear"], ["zoom"], 4, 5, 16, 8],
@@ -208,7 +215,7 @@ export function createTripMap(
     map.addLayer({
       id: "journey-points",
       type: "circle",
-      source: "journey-route",
+      source: "journey-checkpoints",
       filter: ["==", ["geometry-type"], "Point"],
       paint: {
         "circle-radius": ["interpolate", ["linear"], ["zoom"], 4, 2.8, 16, 5],
@@ -259,9 +266,10 @@ export function createTripMap(
 
   return {
     map,
-    setRoute: (points) => {
+    setRoute: (points, checkpointsChanged = true) => {
       latestRoute = points;
       updateRoute();
+      if (checkpointsChanged) updateCheckpoints();
     },
     setSelected: (coordinate) => {
       if (!coordinate) {
