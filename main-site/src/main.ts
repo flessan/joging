@@ -250,29 +250,33 @@ function getOneShotPosition(): Promise<GeolocationPosition> {
   });
 }
 
+function consumeSelectedPoint(): Coordinate | null {
+  const point = selectedPoint;
+  selectedPoint = null;
+  return point;
+}
+
+function createManualRoutePoint(coordinate: Coordinate, label: RoutePoint["label"]): RoutePoint {
+  const point: RoutePoint = { ...coordinate, at: Date.now(), label, source: "manual" };
+  mapHandle?.setSelected(null);
+  el.selectedLabel.textContent = "Checkpoint manual tersimpan";
+  el.selectedCoordinate.textContent = `${point.latitude.toFixed(5)}, ${point.longitude.toFixed(5)}`;
+  el.mapHint.hidden = true;
+  return point;
+}
+
 async function capturePoint(label: RoutePoint["label"]): Promise<RoutePoint> {
   // A map tap is an explicit manual choice and takes priority over GPS.
-  if (selectedPoint) {
-    const point: RoutePoint = { ...selectedPoint, at: Date.now(), label, source: "manual" };
-    selectedPoint = null;
-    mapHandle?.setSelected(null);
-    el.selectedLabel.textContent = "Checkpoint manual tersimpan";
-    el.selectedCoordinate.textContent = `${point.latitude.toFixed(5)}, ${point.longitude.toFixed(5)}`;
-    el.mapHint.hidden = true;
-    return point;
-  }
+  const manualSelection = consumeSelectedPoint();
+  if (manualSelection) return createManualRoutePoint(manualSelection, label);
 
   try {
     const position = await getOneShotPosition();
-    // Respect a manual map tap made while the one-shot GPS request was pending.
-    if (selectedPoint) {
-      const manualPoint: RoutePoint = { ...selectedPoint, at: Date.now(), label, source: "manual" };
-      selectedPoint = null;
-      mapHandle?.setSelected(null);
-      el.selectedLabel.textContent = "Checkpoint manual tersimpan";
-      el.selectedCoordinate.textContent = `${manualPoint.latitude.toFixed(5)}, ${manualPoint.longitude.toFixed(5)}`;
-      return manualPoint;
-    }
+
+    // Read the selection through a helper because a map tap may happen while GPS is pending.
+    const pendingManualSelection = consumeSelectedPoint();
+    if (pendingManualSelection) return createManualRoutePoint(pendingManualSelection, label);
+
     const point: RoutePoint = {
       latitude: position.coords.latitude,
       longitude: position.coords.longitude,
@@ -287,6 +291,10 @@ async function capturePoint(label: RoutePoint["label"]): Promise<RoutePoint> {
     mapHandle?.flyTo(point);
     return point;
   } catch (error) {
+    // A manual tap should still win even if the pending GPS request fails.
+    const pendingManualSelection = consumeSelectedPoint();
+    if (pendingManualSelection) return createManualRoutePoint(pendingManualSelection, label);
+
     const lastPoint = currentTrip?.points[currentTrip.points.length - 1];
     if (lastPoint) {
       notify("GPS tidak tersedia. Checkpoint terakhir digunakan sebagai perkiraan.", true);
