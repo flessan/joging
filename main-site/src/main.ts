@@ -310,7 +310,7 @@ function stopLocationTrail(): void {
   locationWatchId = null;
 }
 
-function appendGpsTrailPoint(position: GeolocationPosition): boolean {
+function appendGpsTrailPoint(position: GeolocationPosition, persistImmediately = true): boolean {
   if (phase !== "active" || !currentTrip || document.hidden) return false;
 
   const accuracy = position.coords.accuracy;
@@ -348,7 +348,9 @@ function appendGpsTrailPoint(position: GeolocationPosition): boolean {
 
   addPoint(point);
   el.mapState.textContent = "Jejak GPS aktif";
-  void persist().catch(() => notify("Penyimpanan checkpoint GPS gagal.", true));
+  if (persistImmediately) {
+    void persist().catch(() => notify("Penyimpanan checkpoint GPS gagal.", true));
+  }
   return true;
 }
 
@@ -404,21 +406,14 @@ async function refreshCurrentLocation(): Promise<void> {
 
   if (phase === "active" && currentTrip) {
     selectedPoint = null;
-    if (position.coords.accuracy <= 75) {
-      const point: RoutePoint = {
-        ...coordinate,
-        at: position.timestamp || Date.now(),
-        label: "Jejak",
-        source: "gps"
-      };
-      const previous = currentTrip.points[currentTrip.points.length - 1];
-      if (!previous || calculateDistance([previous, point]) >= 4) {
-        addPoint(point);
-        await persist();
-      }
+    const accepted = appendGpsTrailPoint(position, false);
+    if (accepted) {
+      await persist();
       notify("Lokasi terbaru ditambahkan ke jejak perjalanan.");
-    } else {
+    } else if (position.coords.accuracy > 75) {
       notify("Lokasi ditemukan, tetapi akurasinya terlalu rendah untuk ditambahkan ke jejak.", true);
+    } else {
+      notify("Posisi diperbarui, tetapi tidak ditambahkan karena terlalu dekat atau lonjakan GPS tidak wajar.");
     }
   } else {
     selectedPoint = coordinate;
@@ -743,6 +738,8 @@ document.addEventListener("visibilitychange", () => {
     startLocationTrail();
   }
 });
+
+window.addEventListener("pagehide", stopLocationTrail);
 
 const updateSW = registerSW({
   onNeedRefresh() { el.updateBanner.hidden = false; },
