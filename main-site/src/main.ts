@@ -117,10 +117,13 @@ function formatDuration(milliseconds: number): string {
 }
 
 function formatCompactDuration(milliseconds: number): string {
-  const totalMinutes = Math.floor(Math.max(0, milliseconds) / 60000);
-  const hours = Math.floor(totalMinutes / 60);
-  const minutes = totalMinutes % 60;
-  return hours > 0 ? `${hours}j ${minutes}m` : `${minutes}m`;
+  const totalSeconds = Math.floor(Math.max(0, milliseconds) / 1000);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  if (hours > 0) return `${hours}j ${minutes}m`;
+  if (minutes > 0) return `${minutes}m ${seconds}d`;
+  return `${seconds}d`;
 }
 
 function formatPace(secondsPerKm: number | null): string {
@@ -232,6 +235,14 @@ async function capturePoint(label: RoutePoint["label"]): Promise<RoutePoint> {
 
   try {
     const position = await getOneShotPosition();
+    // Respect a manual map tap made while the one-shot GPS request was pending.
+    if (selectedPoint) {
+      const manualPoint: RoutePoint = { ...selectedPoint, at: Date.now(), label, source: "manual" };
+      selectedPoint = null;
+      el.selectedLabel.textContent = "Checkpoint manual tersimpan";
+      el.selectedCoordinate.textContent = `${manualPoint.latitude.toFixed(5)}, ${manualPoint.longitude.toFixed(5)}`;
+      return manualPoint;
+    }
     const point: RoutePoint = {
       latitude: position.coords.latitude,
       longitude: position.coords.longitude,
