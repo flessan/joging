@@ -25,8 +25,7 @@ const el = {
   detailsDrawer: $("#details-drawer") as HTMLDialogElement,
   drawerTrigger: $("#open-details-drawer") as HTMLButtonElement,
   drawerClose: $("#close-details-drawer") as HTMLButtonElement,
-  drawerDragHandle: $("#drawer-drag-handle") as HTMLDivElement,
-  drawerContent: $("#drawer-content") as HTMLDivElement,
+  drawerDragHandle: $("#drawer-drag-handle") as HTMLButtonElement,
   mapHint: $("#map-hint"),
   selectedLabel: $("#selected-label"),
   selectedCoordinate: $("#selected-coordinate"),
@@ -147,8 +146,51 @@ function openStatsDrawer(): void {
   syncStatsDrawerState();
 }
 
-function closeStatsDrawer(): void {
-  if (el.detailsDrawer.open) el.detailsDrawer.close();
+let displayTransitionSupport: boolean | undefined;
+
+function canTransitionDisplay(): boolean {
+  if (displayTransitionSupport !== undefined) return displayTransitionSupport;
+  if (!window.CSS?.supports?.("transition-behavior", "allow-discrete") || !document.body) {
+    displayTransitionSupport = false;
+    return displayTransitionSupport;
+  }
+
+  const probe = document.createElement("div");
+  probe.style.cssText = "transition: display 1s allow-discrete !important; display: block;";
+  document.body.append(probe);
+  getComputedStyle(probe).display;
+  probe.style.display = "none";
+  displayTransitionSupport = getComputedStyle(probe).display === "block";
+  probe.remove();
+  return displayTransitionSupport;
+}
+
+function supportsTopLayerExit(): boolean {
+  return window.CSS?.supports?.("overlay", "auto") === true && canTransitionDisplay();
+}
+
+async function closeStatsDrawer(): Promise<void> {
+  const dialog = el.detailsDrawer;
+  if (!dialog.open || dialog.hasAttribute("data-closing")) return;
+
+  if (supportsTopLayerExit()) {
+    dialog.close();
+    return;
+  }
+
+  // Keep the dialog in the top layer while its exit styles animate.
+  dialog.setAttribute("data-closing", "");
+  const animations = dialog.getAnimations({ subtree: true });
+  if (animations.length > 0) {
+    await Promise.race([
+      Promise.allSettled(animations.map((animation) => animation.finished)),
+      new Promise((resolve) => window.setTimeout(resolve, 2000))
+    ]);
+  }
+
+  if (!dialog.hasAttribute("data-closing")) return;
+  dialog.removeAttribute("data-closing");
+  dialog.close();
 }
 
 function formatDuration(milliseconds: number): string {
@@ -781,19 +823,36 @@ el.clearSelection.addEventListener("click", () => {
 });
 el.closeResult.addEventListener("click", () => { el.result.hidden = true; });
 el.drawerTrigger.addEventListener("click", openStatsDrawer);
-el.drawerClose.addEventListener("click", closeStatsDrawer);
+el.drawerClose.addEventListener("click", () => { void closeStatsDrawer(); });
+el.drawerDragHandle.addEventListener("click", () => { void closeStatsDrawer(); });
+el.drawerDragHandle.addEventListener("keydown", (event: KeyboardEvent) => {
+  if (event.key === "ArrowDown") {
+    event.preventDefault();
+    void closeStatsDrawer();
+  }
+});
 el.detailsDrawer.addEventListener("close", syncStatsDrawerState);
 
-// Native dialog handles Escape and focus restoration. Close only when the actual backdrop is clicked.
-el.detailsDrawer.addEventListener("click", (event: MouseEvent) => {
-  if (event.target !== el.detailsDrawer) return;
-  const rect = el.detailsDrawer.getBoundingClientRect();
-  const clickedOutside = event.clientX < rect.left || event.clientX > rect.right
-    || event.clientY < rect.top || event.clientY > rect.bottom;
-  if (clickedOutside) closeStatsDrawer();
+// Native modal handles Escape and focus restoration. Intercept Escape only when
+// the browser cannot animate an element out of the top layer.
+el.detailsDrawer.addEventListener("cancel", (event: Event) => {
+  if (supportsTopLayerExit()) return;
+  event.preventDefault();
+  void closeStatsDrawer();
 });
 
-// The grab handle supports a short downward swipe without stealing scroll gestures from the drawer body.
+// closedby="any" handles light-dismiss where supported. Older browsers use this fallback.
+if (!("closedBy" in HTMLDialogElement.prototype)) {
+  el.detailsDrawer.addEventListener("click", (event: MouseEvent) => {
+    if (event.target !== el.detailsDrawer) return;
+    const rect = el.detailsDrawer.getBoundingClientRect();
+    const clickedOutside = event.clientX < rect.left || event.clientX > rect.right
+      || event.clientY < rect.top || event.clientY > rect.bottom;
+    if (clickedOutside) void closeStatsDrawer();
+  });
+}
+
+// A dedicated handle supports downward swipe-to-dismiss without stealing scroll from the drawer body.
 let drawerPointer: { id: number; startY: number; startedAt: number } | null = null;
 function resetDrawerDrag(): void {
   drawerPointer = null;
@@ -801,13 +860,14 @@ function resetDrawerDrag(): void {
   el.detailsDrawer.style.removeProperty("translate");
 }
 el.drawerDragHandle.addEventListener("pointerdown", (event: PointerEvent) => {
-  if (!el.detailsDrawer.open || (event.pointerType === "mouse" && event.button !== 0)) return;
+  if (!el.detailsDrawer.open || !event.isPrimary || event.button !== 0) return;
   drawerPointer = { id: event.pointerId, startY: event.clientY, startedAt: performance.now() };
   el.detailsDrawer.classList.add("is-dragging");
   el.drawerDragHandle.setPointerCapture(event.pointerId);
 });
 el.drawerDragHandle.addEventListener("pointermove", (event: PointerEvent) => {
-  if (!drawerPointer || drawerPointer.id !== event.pointerId) return;
+  if (!drawerPointer || drawerPointer.id !== event.pointerId
+    || !el.drawerDragHandle.hasPointerCapture(event.pointerId)) return;
   const offset = Math.max(0, Math.min(window.innerHeight, event.clientY - drawerPointer.startY));
   el.detailsDrawer.style.setProperty("translate", `0 ${offset}px`);
 });
@@ -817,7 +877,7 @@ el.drawerDragHandle.addEventListener("pointerup", (event: PointerEvent) => {
   const elapsed = Math.max(1, performance.now() - drawerPointer.startedAt);
   const shouldClose = distance > 110 || (distance > 32 && distance / elapsed > 0.65);
   resetDrawerDrag();
-  if (shouldClose) closeStatsDrawer();
+  if (shouldClose) void closeStatsDrawer();
 });
 el.drawerDragHandle.addEventListener("pointercancel", resetDrawerDrag);
 el.drawerDragHandle.addEventListener("lostpointercapture", () => {
