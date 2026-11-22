@@ -14,7 +14,7 @@ export default defineConfig({
       manifest: {
         name: "Joging - Private Route Tracker",
         short_name: "Joging",
-        description: "Pelacak perjalanan pribadi yang dirancang untuk berjalan offline.",
+        description: "Pelacak perjalanan pribadi dengan riwayat lokal dan jejak GPS saat perjalanan aktif.",
         start_url: "./",
         scope: "./",
         theme_color: "#e9f1f5",
