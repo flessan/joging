@@ -22,7 +22,7 @@ const el = {
   sessionTitle: $("#session-title"),
   followToggle: $("#follow-toggle"),
   drawerLevelLabel: $("#drawer-level-label"),
-  detailsDrawer: $("#details-drawer"),
+  detailsDrawer: $("#details-drawer") as HTMLDetailsElement,
   mapHint: $("#map-hint"),
   selectedLabel: $("#selected-label"),
   selectedCoordinate: $("#selected-coordinate"),
