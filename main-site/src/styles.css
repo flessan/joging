@@ -148,6 +148,30 @@ a { color: inherit; }
   backdrop-filter: blur(10px);
 }
 .map-state-dot { width: 7px; height: 7px; border-radius: 50%; background: #5d9c7b; }
+.map-trail-legend {
+  position: absolute;
+  z-index: 4;
+  top: calc(env(safe-area-inset-top, 0px) + 98px);
+  left: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 10px;
+  border: 1px solid rgba(218,228,231,.88);
+  border-radius: 999px;
+  background: rgba(255,255,255,.94);
+  color: #5f737c;
+  font-size: 8px;
+  box-shadow: 0 2px 9px rgba(33,61,72,.08);
+  backdrop-filter: blur(10px);
+}
+.map-trail-legend > span {
+  width: 20px;
+  height: 0;
+  border-top: 4px solid #087fa6;
+  border-radius: 99px;
+  box-shadow: 0 0 0 1px #fff;
+}
 .map-hint {
   position: absolute;
   z-index: 4;
@@ -383,7 +407,7 @@ h2 { margin: 0; font-size: 16px; line-height: 1.2; letter-spacing: -.5px; }
 .toast { position: fixed; z-index: 30; top: calc(env(safe-area-inset-top, 0px) + 112px); left: 50%; width: max-content; max-width: calc(100% - 28px); padding: 11px 14px; transform: translateX(-50%); border: 1px solid var(--line); border-radius: 12px; background: rgba(255,255,255,.97); color: var(--text); font-size: 10px; line-height: 1.45; box-shadow: 0 8px 25px rgba(31,57,67,.16); }
 .toast.is-error { border-color: #efcfcc; background: #fff8f7; color: var(--danger); }
 .update-banner { position: fixed; z-index: 30; top: calc(env(safe-area-inset-top,0px) + 112px); left: 50%; display: flex; align-items: center; gap: 10px; max-width: calc(100% - 24px); padding: 9px 11px; transform: translateX(-50%); border: 1px solid var(--line); border-radius: 12px; background: var(--surface); box-shadow: 0 8px 25px rgba(31,57,67,.15); font-size: 9px; }
-.map-attribution { position: absolute; z-index: 3; right: 10px; bottom: calc(env(safe-area-inset-bottom, 0px) + 306px); display: flex; gap: 7px; padding: 4px 7px; border-radius: 6px; background: rgba(255,255,255,.82); color: #61747c; font-size: 7px; pointer-events: auto; }
+.map-attribution { position: absolute; z-index: 4; top: calc(env(safe-area-inset-top, 0px) + 128px); left: 12px; display: flex; gap: 7px; padding: 4px 7px; border-radius: 6px; background: rgba(255,255,255,.82); color: #61747c; font-size: 7px; pointer-events: auto; }
 .map-attribution a { text-decoration: none; }
 .icon-button { display: grid; width: 32px; height: 32px; place-items: center; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--muted); }
 .icon-button svg { width: 16px; height: 16px; }
