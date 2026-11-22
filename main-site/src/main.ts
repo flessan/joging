@@ -243,6 +243,7 @@ async function capturePoint(label: RoutePoint["label"]): Promise<RoutePoint> {
   if (selectedPoint) {
     const point: RoutePoint = { ...selectedPoint, at: Date.now(), label, source: "manual" };
     selectedPoint = null;
+    mapHandle?.setSelected(null);
     el.selectedLabel.textContent = "Checkpoint manual tersimpan";
     el.selectedCoordinate.textContent = `${point.latitude.toFixed(5)}, ${point.longitude.toFixed(5)}`;
     el.mapHint.hidden = true;
@@ -310,7 +311,7 @@ function stopLocationTrail(): void {
 }
 
 function appendGpsTrailPoint(position: GeolocationPosition): boolean {
-  if (phase !== "active" || !currentTrip) return false;
+  if (phase !== "active" || !currentTrip || document.hidden) return false;
 
   const accuracy = position.coords.accuracy;
   const coordinate: Coordinate = {
@@ -368,14 +369,15 @@ function startLocationTrail(): void {
       }
     },
     (error) => {
+      const isNewError = lastLocationWatchError !== error.code;
       lastLocationWatchError = error.code;
       if (error.code === 1) {
         stopLocationTrail();
         el.mapState.textContent = "Izin GPS ditolak";
-        notify("Izin GPS ditolak. Gunakan Perbarui lokasi atau checkpoint manual.", true);
+        if (isNewError) notify("Izin GPS ditolak. Gunakan Perbarui lokasi atau checkpoint manual.", true);
       } else {
         el.mapState.textContent = "Menunggu sinyal GPS";
-        notify("Sinyal GPS belum stabil. Jejak akan dilanjutkan saat lokasi tersedia.", true);
+        if (isNewError) notify("Sinyal GPS belum stabil. Jejak akan dilanjutkan saat lokasi tersedia.", true);
       }
     },
     {
