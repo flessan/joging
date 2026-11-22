@@ -1,6 +1,6 @@
 import "./styles.css";
 import { registerSW } from "virtual:pwa-register";
-import { createTripMap, type Coordinate, type RoutePoint, type TripMapHandle } from "./map/trip-map";
+import type { Coordinate, RoutePoint, TripMapHandle } from "./map/trip-map";
 import {
   DEFAULT_APP_DATA,
   loadAppData,
@@ -75,6 +75,8 @@ const el = {
 type Phase = "idle" | "active" | "paused";
 let appData: AppData = { ...DEFAULT_APP_DATA };
 let currentTrip: ActiveTrip | null = null;
+let currentDistanceMeters = 0;
+let persistTimer: ReturnType<typeof setTimeout> | undefined;
 let phase: Phase = "idle";
 let selectedPoint: Coordinate | null = null;
 let busy = false;
@@ -92,41 +94,66 @@ const BADGES = [
 ] as const;
 
 let mapHandle: TripMapHandle | undefined;
-mapHandle = createTripMap(
-  el.map,
-  (coordinate) => {
-    el.selectedLabel.textContent = "Titik manual dipilih";
-    el.selectedCoordinate.textContent = `${coordinate.latitude.toFixed(5)}, ${coordinate.longitude.toFixed(5)}`;
-    el.mapHint.hidden = true;
+let mapMountStarted = false;
 
-    if (phase === "active" && currentTrip) {
-      selectedPoint = null;
-      mapHandle?.setSelected(null);
-      addPoint({
-        ...coordinate,
-        at: Date.now(),
-        label: "Jejak",
-        source: "manual"
-      });
-      void persist().catch(() => notify("Checkpoint manual gagal disimpan.", true));
-      notify("Titik manual ditambahkan ke jejak perjalanan.");
-    } else {
-      selectedPoint = coordinate;
+async function mountTripMap(): Promise<void> {
+  if (mapMountStarted) return;
+  mapMountStarted = true;
+  el.mapState.textContent = "Memuat peta...";
+
+  try {
+    // Keep MapLibre and its CSS out of the critical startup path.
+    const { createTripMap } = await import("./map/trip-map");
+    mapHandle = createTripMap(
+      el.map,
+      (coordinate) => {
+        el.selectedLabel.textContent = "Titik manual dipilih";
+        el.selectedCoordinate.textContent = `${coordinate.latitude.toFixed(5)}, ${coordinate.longitude.toFixed(5)}`;
+        el.mapHint.hidden = true;
+
+        if (phase === "active" && currentTrip) {
+          selectedPoint = null;
+          mapHandle?.setSelected(null);
+          addPoint({
+            ...coordinate,
+            at: Date.now(),
+            label: "Jejak",
+            source: "manual"
+          });
+          void persist().catch(() => notify("Checkpoint manual gagal disimpan.", true));
+          notify("Titik manual ditambahkan ke jejak perjalanan.");
+        } else {
+          selectedPoint = coordinate;
+        }
+      },
+      () => {
+        el.mapState.textContent = "Peta siap";
+        if (currentTrip?.points.length) {
+          mapHandle?.setRoute(currentTrip.points);
+          const lastPoint = currentTrip.points[currentTrip.points.length - 1];
+          if (lastPoint) mapHandle?.flyTo(lastPoint, 15);
+        }
+      },
+      (message) => {
+        el.mapState.textContent = "Peta tidak lengkap";
+        console.warn("Joging map:", message);
+      },
+      (enabled) => {
+        el.followToggle.setAttribute("aria-pressed", String(enabled));
+        el.followToggle.classList.toggle("is-enabled", enabled);
+      }
+    );
+
+    if (currentTrip?.points.length) {
+      mapHandle.setRoute(currentTrip.points);
+      const lastPoint = currentTrip.points[currentTrip.points.length - 1];
+      if (lastPoint) mapHandle.flyTo(lastPoint, 15);
     }
-  },
-  () => {
-    el.mapState.textContent = "Peta siap";
-    if (currentTrip?.points.length) mapHandle?.setRoute(currentTrip.points);
-  },
-  (message) => {
-    el.mapState.textContent = "Peta tidak lengkap";
-    console.warn("Joging map:", message);
-  },
-  (enabled) => {
-    el.followToggle.setAttribute("aria-pressed", String(enabled));
-    el.followToggle.classList.toggle("is-enabled", enabled);
+  } catch (error) {
+    el.mapState.textContent = "Peta gagal dimuat";
+    console.warn("Joging map initialization failed:", error);
   }
-);
+}
 
 function notify(message: string, isError = false): void {
   el.toast.textContent = message;
@@ -247,17 +274,17 @@ function getTotalTime(now = Date.now()): number {
 }
 
 function updateLiveStats(): void {
-  const points = currentTrip?.points ?? [];
-  const distance = calculateDistance(points);
+  const pointCount = currentTrip?.points.length ?? 0;
+  const km = currentDistanceMeters / 1000;
   const activeMs = getActiveTime();
   const totalMs = getTotalTime();
-  const km = distance / 1000;
   const speed = activeMs > 0 ? km / (activeMs / 3600000) : 0;
 
-  el.distance.innerHTML = `${km.toFixed(2)} <small>km</small>`;
+  // Update the existing text nodes instead of rebuilding nested markup every second.
+  if (el.distance.firstChild) el.distance.firstChild.textContent = `${km.toFixed(2)} `;
   el.duration.textContent = currentTrip ? formatDuration(totalMs) : "00:00:00";
-  el.checkpoints.textContent = String(points.length);
-  el.speed.innerHTML = speed > 0 ? `${speed.toFixed(1)} <small>km/j</small>` : '- <small>km/j</small>';
+  el.checkpoints.textContent = String(pointCount);
+  if (el.speed.firstChild) el.speed.firstChild.textContent = speed > 0 ? `${speed.toFixed(1)} ` : "- ";
 }
 
 function setPhase(nextPhase: Phase): void {
@@ -304,8 +331,8 @@ function getOneShotPosition(): Promise<GeolocationPosition> {
       reject(new Error(messages[error.code] ?? "Lokasi tidak dapat dibaca."));
     }, {
       enableHighAccuracy: true,
-      maximumAge: 0,
-      timeout: 15000
+      maximumAge: 10000,
+      timeout: 8000
     });
   });
 }
@@ -325,45 +352,6 @@ function createManualRoutePoint(coordinate: Coordinate, label: RoutePoint["label
   return point;
 }
 
-async function capturePoint(label: RoutePoint["label"]): Promise<RoutePoint> {
-  // A map tap is an explicit manual choice and takes priority over GPS.
-  const manualSelection = consumeSelectedPoint();
-  if (manualSelection) return createManualRoutePoint(manualSelection, label);
-
-  try {
-    const position = await getOneShotPosition();
-
-    // Read the selection through a helper because a map tap may happen while GPS is pending.
-    const pendingManualSelection = consumeSelectedPoint();
-    if (pendingManualSelection) return createManualRoutePoint(pendingManualSelection, label);
-
-    const point: RoutePoint = {
-      latitude: position.coords.latitude,
-      longitude: position.coords.longitude,
-      at: position.timestamp || Date.now(),
-      label,
-      source: "gps"
-    };
-    el.selectedLabel.textContent = "Lokasi GPS terakhir";
-    el.selectedCoordinate.textContent = `${point.latitude.toFixed(5)}, ${point.longitude.toFixed(5)}${Number.isFinite(position.coords.accuracy) ? ` · akurasi ±${Math.round(position.coords.accuracy)} m` : ""}`;
-    el.mapHint.hidden = true;
-    mapHandle?.setCurrentLocation(point);
-    mapHandle?.flyTo(point);
-    return point;
-  } catch (error) {
-    // A manual tap should still win even if the pending GPS request fails.
-    const pendingManualSelection = consumeSelectedPoint();
-    if (pendingManualSelection) return createManualRoutePoint(pendingManualSelection, label);
-
-    const lastPoint = currentTrip?.points[currentTrip.points.length - 1];
-    if (lastPoint) {
-      notify("GPS tidak tersedia. Checkpoint terakhir digunakan sebagai perkiraan.", true);
-      return { ...lastPoint, at: Date.now(), label, source: "manual" };
-    }
-    throw error instanceof Error ? error : new Error("Tidak dapat mengambil lokasi.");
-  }
-}
-
 function addPoint(point: RoutePoint): void {
   if (!currentTrip) return;
   const previous = currentTrip.points[currentTrip.points.length - 1];
@@ -375,6 +363,7 @@ function addPoint(point: RoutePoint): void {
   }
 
   currentTrip.points.push(point);
+  currentDistanceMeters += separation;
   mapHandle?.setRoute(currentTrip.points);
   updateLiveStats();
 }
@@ -382,6 +371,22 @@ function addPoint(point: RoutePoint): void {
 async function persist(): Promise<void> {
   appData.activeTrip = currentTrip;
   await saveAppData(appData);
+}
+
+function schedulePersist(): void {
+  if (persistTimer) return;
+  // Batch GPS samples into one IndexedDB write instead of serializing all history per fix.
+  persistTimer = setTimeout(() => {
+    persistTimer = undefined;
+    void persist().catch(() => notify("Penyimpanan jejak GPS gagal.", true));
+  }, 5000);
+}
+
+function flushScheduledPersist(): void {
+  if (!persistTimer) return;
+  clearTimeout(persistTimer);
+  persistTimer = undefined;
+  void persist().catch(() => notify("Penyimpanan jejak GPS gagal.", true));
 }
 
 function stopLocationTrail(): void {
@@ -429,9 +434,7 @@ function appendGpsTrailPoint(position: GeolocationPosition, persistImmediately =
 
   addPoint(point);
   el.mapState.textContent = "Jejak GPS aktif";
-  if (persistImmediately) {
-    void persist().catch(() => notify("Penyimpanan checkpoint GPS gagal.", true));
-  }
+  if (persistImmediately) schedulePersist();
   return true;
 }
 
@@ -506,50 +509,67 @@ async function refreshCurrentLocation(): Promise<void> {
   if (phase !== "active") el.mapState.textContent = "Lokasi diperbarui";
 }
 
+function takeAvailableCheckpoint(label: RoutePoint["label"]): RoutePoint | null {
+  const manualSelection = consumeSelectedPoint();
+  if (manualSelection) return createManualRoutePoint(manualSelection, label);
+
+  const lastPoint = currentTrip?.points[currentTrip.points.length - 1];
+  if (!lastPoint) return null;
+  return { ...lastPoint, at: Date.now(), label };
+}
+
 async function startJourney(): Promise<void> {
   if (phase !== "idle") return;
-  const point = await capturePoint("Mulai");
+
+  // Starting a session must not wait for a fresh, high-accuracy GPS fix.
+  const manualSelection = consumeSelectedPoint();
+  const point = manualSelection ? createManualRoutePoint(manualSelection, "Mulai") : null;
   const now = Date.now();
   currentTrip = {
     id: crypto.randomUUID(),
     startedAt: now,
     lastResumedAt: now,
     activeMs: 0,
-    points: [point]
+    points: point ? [point] : []
   };
-  await persist();
+  currentDistanceMeters = 0;
   mapHandle?.setRoute(currentTrip.points);
   setPhase("active");
   mapHandle?.setFollow(true);
   startLocationTrail();
-  notify(point.source === "gps" ? "Perjalanan dimulai. Jejak GPS aktif selama perjalanan berjalan." : "Perjalanan dimulai dari titik manual. Jejak GPS aktif.");
+  void persist().catch(() => notify("Perjalanan dimulai, tetapi penyimpanan lokal gagal.", true));
+  notify(point
+    ? "Perjalanan dimulai dari titik manual. GPS sedang mengikuti lokasi."
+    : "Perjalanan dimulai. Menunggu lokasi GPS pertama...");
 }
 
 async function pauseJourney(): Promise<void> {
   if (!currentTrip || phase !== "active") return;
-  const point = await capturePoint("Istirahat");
   stopLocationTrail();
+  const point = takeAvailableCheckpoint("Istirahat");
   const now = Date.now();
   currentTrip.activeMs += Math.max(0, now - currentTrip.lastResumedAt);
   currentTrip.pausedAt = now;
-  addPoint(point);
-  await persist();
+  if (point) addPoint(point);
   setPhase("paused");
-  notify("Checkpoint istirahat disimpan. Timer aktif dijeda.");
+  void persist().catch(() => notify("Penyimpanan perjalanan gagal.", true));
+  notify(point
+    ? "Checkpoint istirahat disimpan. Timer aktif dijeda."
+    : "Timer dijeda. Belum ada titik GPS untuk pin istirahat.");
 }
 
 async function resumeJourney(): Promise<void> {
   if (!currentTrip || phase !== "paused") return;
-  const point = await capturePoint("Lanjut");
+  const point = takeAvailableCheckpoint("Lanjut");
   const now = Date.now();
-  addPoint(point);
+  if (point) addPoint(point);
   currentTrip.lastResumedAt = now;
   delete currentTrip.pausedAt;
-  await persist();
   setPhase("active");
   mapHandle?.setFollow(true);
   startLocationTrail();
-  notify("Perjalanan dilanjutkan. Jejak GPS aktif kembali.");
+  void persist().catch(() => notify("Penyimpanan perjalanan gagal.", true));
+  notify("Perjalanan dilanjutkan. GPS sedang mengikuti lokasi kembali.");
 }
 
 function localDayKey(timestamp: number): string {
@@ -598,7 +618,7 @@ function completeTrip(point?: RoutePoint): void {
 
   const activeMs = getActiveTime(now);
   const durationMs = Math.max(0, now - currentTrip.startedAt);
-  const distanceMeters = calculateDistance(currentTrip.points);
+  const distanceMeters = currentDistanceMeters;
   const distanceKm = distanceMeters / 1000;
   const averageSpeedKmh = activeMs > 0 ? distanceKm / (activeMs / 3600000) : 0;
   const averagePaceSecondsPerKm = distanceKm >= 0.03 && activeMs > 0
@@ -634,6 +654,7 @@ function completeTrip(point?: RoutePoint): void {
     activeTrip: null
   };
   currentTrip = null;
+  currentDistanceMeters = 0;
   setPhase("idle");
   mapHandle?.setRoute(trip.points);
   void saveAppData(appData).catch(() => notify("Perjalanan selesai, tetapi penyimpanan browser gagal.", true));
@@ -644,15 +665,9 @@ function completeTrip(point?: RoutePoint): void {
 async function finishJourney(): Promise<void> {
   if (!currentTrip || phase === "idle") return;
   stopLocationTrail();
-  let point: RoutePoint | undefined;
-  try {
-    point = await capturePoint("Selesai");
-  } catch (error) {
-    if (currentTrip.points.length === 0) throw error;
-    notify("Lokasi akhir tidak didapat. Perjalanan diselesaikan pada checkpoint terakhir.", true);
-  }
 
-  // completeTrip reads the active timer once; do not add this interval beforehand.
+  // Finish from the latest accepted point; do not block the user on another GPS request.
+  const point = takeAvailableCheckpoint("Selesai") ?? undefined;
   completeTrip(point);
 }
 
@@ -790,6 +805,7 @@ async function initialize(): Promise<void> {
   try {
     appData = await loadAppData();
     currentTrip = appData.activeTrip;
+    currentDistanceMeters = calculateDistance(currentTrip?.points ?? []);
     if (currentTrip) {
       phase = currentTrip.pausedAt ? "paused" : "active";
       mapHandle?.setRoute(currentTrip.points);
@@ -901,13 +917,17 @@ el.export.addEventListener("click", exportHistory);
 document.addEventListener("visibilitychange", () => {
   if (document.hidden && phase === "active") {
     stopLocationTrail();
+    flushScheduledPersist();
     el.mapState.textContent = "Jejak GPS dijeda saat aplikasi tersembunyi";
   } else if (!document.hidden && phase === "active") {
     startLocationTrail();
   }
 });
 
-window.addEventListener("pagehide", stopLocationTrail);
+window.addEventListener("pagehide", () => {
+  stopLocationTrail();
+  flushScheduledPersist();
+});
 
 const updateSW = registerSW({
   onNeedRefresh() { el.updateBanner.hidden = false; },
@@ -917,3 +937,5 @@ el.update.addEventListener("click", () => { void updateSW(true); });
 
 void initialize();
 window.setInterval(updateLiveStats, 1000);
+// Let the map-free controls paint before fetching and initializing MapLibre.
+requestAnimationFrame(() => requestAnimationFrame(() => { void mountTripMap(); }));
