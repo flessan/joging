@@ -363,7 +363,7 @@ function addPoint(point: RoutePoint): void {
 
   currentTrip.points.push(point);
   currentDistanceMeters += separation;
-  mapHandle?.setRoute(currentTrip.points);
+  mapHandle?.setRoute(currentTrip.points, point.label !== "Jejak");
   updateLiveStats();
 }
 
