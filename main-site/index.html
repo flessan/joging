@@ -48,7 +48,13 @@
           <div class="map-column">
             <div class="section-heading map-heading">
               <div><p class="eyebrow">LIVE MAP</p><h2>Area perjalanan</h2></div>
-              <span class="map-state"><span class="map-state-dot"></span><span id="map-state-label">Peta siap</span></span>
+              <div class="map-heading-tools">
+                <button class="button button-secondary map-location-button" id="refresh-location" type="button">
+                  <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="7.5" stroke="currentColor" stroke-width="1.7"/><circle cx="12" cy="12" r="2.2" fill="currentColor"/><path d="M12 2v3M22 12h-3M12 22v-3M2 12h3" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+                  Perbarui lokasi
+                </button>
+                <span class="map-state"><span class="map-state-dot"></span><span id="map-state-label">Peta siap</span></span>
+              </div>
             </div>
             <div class="map-frame"><div id="map" aria-label="Peta interaktif"></div><div class="map-hint" id="map-hint"><span class="map-hint-mark"></span><span>Ketuk peta untuk memilih titik secara manual</span></div></div>
             <div class="map-caption">
@@ -69,7 +75,7 @@
             <div class="session-actions">
               <button class="button button-primary button-wide" id="start-button" type="button"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m8 5 11 7-11 7V5Z" fill="currentColor"/></svg>Mulai perjalanan</button>
               <div class="action-pair" id="active-actions" hidden>
-                <button class="button button-secondary" id="rest-button" type="button"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M8 5v14M16 5v14" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>Istirahat</button>
+                <button class="button button-secondary" id="rest-button" type="button"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M19.2 14.8A8.2 8.2 0 0 1 9.2 4.7a8.5 8.5 0 1 0 10 10.1Z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M15.2 5.1h4l-4 3.8h4M12.4 10.2h3.2l-3.2 3h3.2" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>Istirahat</button>
                 <button class="button button-danger" id="finish-button" type="button"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2" fill="currentColor"/></svg>Selesai</button>
               </div>
               <div class="action-pair" id="paused-actions" hidden>
@@ -77,8 +83,8 @@
                 <button class="button button-danger" id="finish-paused-button" type="button">Akhiri perjalanan</button>
               </div>
             </div>
-            <p class="session-help" id="session-help">Tekan mulai untuk mengambil satu titik GPS dan memulai timer. Kamu juga bisa memilih titik di peta jika GPS tidak tersedia.</p>
-            <div class="privacy-mini"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="5" y="10" width="14" height="11" rx="2" stroke="currentColor" stroke-width="1.6"/><path d="M8 10V7a4 4 0 1 1 8 0v3M12 14v3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg><span>GPS sekali per aksi. Tidak ada pelacakan latar belakang.</span></div>
+            <p class="session-help" id="session-help">Tekan Mulai untuk merekam jejak GPS selama perjalanan. Ketuk peta untuk memakai checkpoint manual.</p>
+            <div class="privacy-mini"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="5" y="10" width="14" height="11" rx="2" stroke="currentColor" stroke-width="1.6"/><path d="M8 10V7a4 4 0 1 1 8 0v3M12 14v3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg><span>Jejak GPS hanya aktif saat perjalanan berjalan dan aplikasi terbuka.</span></div>
           </aside>
         </section>
 
